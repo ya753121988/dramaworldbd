@@ -17,7 +17,6 @@ categories_col = db['categories']
 
 # --- Initial Database Setup ---
 def init_db():
-    # Admin & Ad Settings
     if not settings_col.find_one({"type": "config"}):
         settings_col.insert_one({
             "type": "config",
@@ -29,16 +28,19 @@ def init_db():
                 "banner": "", "header": "", "footer": "", "middle": ""
             }
         })
-    # Default Categories
     if categories_col.count_documents({}) == 0:
         for cat in ["Action", "Drama", "Horror", "Romance"]:
             categories_col.insert_one({"name": cat})
 
 init_db()
 
-# --- Helper Functions ---
+# --- Helper Functions (Fixed to prevent 500 error) ---
 def get_config():
-    return settings_col.find_one({"type": "config"})
+    conf = settings_col.find_one({"type": "config"})
+    if not conf:
+        init_db()
+        conf = settings_col.find_one({"type": "config"})
+    return conf
 
 # --- UI Layout: CSS & Premium Design ---
 UI_STYLE = """
@@ -91,7 +93,6 @@ HOME_HTML = """
 
         <div class="mb-8 text-center overflow-hidden">{{ conf.ads.middle | safe }}</div>
 
-        <!-- Grouped Content by Category -->
         {% for cat_name, movies in grouped_movies.items() %}
             {% if movies %}
             <div class="mb-12">
@@ -144,7 +145,6 @@ DETAILS_HTML = """
                 <span class="bg-blue-600 px-4 py-1 rounded-full text-xs font-bold uppercase shadow-lg">{{ movie.badge }}</span>
                 <h1 class="text-4xl font-bold mt-4 mb-2">{{ movie.name }}</h1>
                 <p class="text-blue-400 font-bold mb-8 italic uppercase tracking-widest text-sm">{{ movie.category }}</p>
-                
                 <div class="glass p-8 rounded-3xl border border-blue-500/10 shadow-2xl">
                     <h3 class="text-xl font-bold mb-8 border-b border-slate-800 pb-3 flex items-center gap-2">
                         <i class="fa fa-download text-blue-500"></i> DOWNLOAD & WATCH LINKS
@@ -225,7 +225,6 @@ def index():
         grouped_movies = {}
         for cat in all_cats:
             grouped_movies[cat['name']] = list(movies_col.find({"category": cat['name']}).sort("_id", -1))
-        # Slider logic (based on limit)
         slider_movies = list(movies_col.find().sort("_id", -1).limit(conf.get('slider_limit', 5)))
         movies = list(movies_col.find().sort("_id", -1))
     return render_template_string(HOME_HTML, movies=movies, slider_movies=slider_movies, grouped_movies=grouped_movies, conf=conf)
@@ -233,7 +232,10 @@ def index():
 @app.route('/movie/<id>')
 def movie_details(id):
     conf = get_config()
-    movie = movies_col.find_one({"_id": ObjectId(id)})
+    try:
+        movie = movies_col.find_one({"_id": ObjectId(id)})
+    except:
+        return redirect('/')
     if not movie: return redirect('/')
     return render_template_string(DETAILS_HTML, movie=movie, conf=conf)
 
@@ -266,7 +268,7 @@ def admin_dash():
                 <thead class="bg-slate-900/50 text-slate-500 text-xs uppercase tracking-widest">
                     <tr><th class="p-6">Movie Information</th><th class="p-6">Category</th><th class="p-6 text-center">Action</th></tr>
                 </thead>
-                <tbody class="divide-y divide-slate-900">
+                <tbody class="divide-y divide-slate-800">
                     {% for m in movies %}
                     <tr class="hover:bg-slate-800/30 transition">
                         <td class="p-6 flex items-center gap-4">
@@ -304,7 +306,10 @@ def add_movie():
 @app.route('/admin/edit/<id>', methods=['GET', 'POST'])
 def edit_movie(id):
     if not session.get('logged_in'): return redirect('/login')
-    movie = movies_col.find_one({"_id": ObjectId(id)})
+    try:
+        movie = movies_col.find_one({"_id": ObjectId(id)})
+    except:
+        return redirect('/admin')
     cats = list(categories_col.find())
     if request.method == 'POST':
         labels, urls = request.form.getlist('l_name[]'), request.form.getlist('l_url[]')
@@ -319,7 +324,10 @@ def edit_movie(id):
 @app.route('/admin/delete/<id>')
 def delete_movie(id):
     if not session.get('logged_in'): return redirect('/login')
-    movies_col.delete_one({"_id": ObjectId(id)})
+    try:
+        movies_col.delete_one({"_id": ObjectId(id)})
+    except:
+        pass
     return redirect('/admin')
 
 @app.route('/admin/settings', methods=['GET', 'POST'])
@@ -340,8 +348,7 @@ def settings():
         return redirect('/admin/settings')
     return render_template_string(SETTINGS_HTML, conf=conf, cats=cats)
 
-# --- HTML TEMPLATES ---
-
+# --- FORM & SETTINGS HTML (With Unlimited Button Feature) ---
 FORM_HTML = ADMIN_LAYOUT.replace('{% block content %}{% endblock %}', """
 <div class="max-w-4xl mx-auto glass p-8 md:p-12 rounded-3xl shadow-2xl">
     <h2 class="text-2xl font-bold mb-10 text-blue-500 uppercase tracking-widest">{{ 'Edit Movie' if movie else 'Add Movie' }}</h2>
@@ -366,7 +373,6 @@ FORM_HTML = ADMIN_LAYOUT.replace('{% block content %}{% endblock %}', """
             <label class="text-[10px] text-slate-500 font-bold uppercase">Badge Text (e.g. 4K Ultra HD)</label>
             <input type="text" name="badge" value="{{ movie.badge if movie else '' }}" class="w-full" placeholder="HD 1080p">
         </div>
-        
         <div id="btn-container" class="space-y-4 pt-6 border-t border-slate-800">
             <label class="block text-xs font-bold text-blue-500 uppercase">UNLIMITED DOWNLOAD BUTTONS</label>
             {% if movie %}{% for l in movie.links %}
@@ -374,7 +380,6 @@ FORM_HTML = ADMIN_LAYOUT.replace('{% block content %}{% endblock %}', """
             {% endfor %}{% endif %}
         </div>
         <button type="button" onclick="addL()" class="text-blue-500 text-xs font-bold hover:underline tracking-widest">+ ADD BUTTON</button>
-        
         <div class="pt-10 flex gap-4">
             <button type="submit" class="bg-blue-600 px-12 py-4 rounded-2xl font-bold shadow-xl transition hover:bg-blue-700">SAVE DATA</button>
             <a href="/admin" class="bg-slate-800 px-12 py-4 rounded-2xl font-bold">CANCEL</a>
@@ -395,54 +400,31 @@ SETTINGS_HTML = ADMIN_LAYOUT.replace('{% block content %}{% endblock %}', """
 <div class="space-y-10">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
         <!-- Profile & Slider -->
-        <form method="POST" class="glass p-8 rounded-3xl space-y-4">
-            <h3 class="font-bold text-blue-500 uppercase tracking-widest border-b border-slate-800 pb-3">Admin Profile</h3>
-            <div class="space-y-1">
-                <label class="text-[10px] text-slate-500 uppercase">Username</label>
-                <input type="text" name="admin_user" value="{{ conf.admin_user }}" class="w-full text-sm">
-            </div>
-            <div class="space-y-1">
-                <label class="text-[10px] text-slate-500 uppercase">Password</label>
-                <input type="text" name="admin_pass" value="{{ conf.admin_pass }}" class="w-full text-sm">
-            </div>
-            <div class="space-y-1">
-                <label class="text-[10px] text-slate-500 uppercase">Slider Limit (Max Items)</label>
-                <input type="number" name="slider_limit" value="{{ conf.slider_limit }}" class="w-full text-sm">
-            </div>
-            <button type="submit" name="update_profile" class="w-full bg-blue-600 py-3 rounded-xl font-bold">Save Settings</button>
+        <form method="POST" class="glass p-8 rounded-3xl space-y-4 shadow-2xl">
+            <h3 class="font-bold text-blue-500 uppercase italic tracking-widest border-b border-slate-800 pb-3">Admin Profile</h3>
+            <div class="space-y-1"><label class="text-[10px] text-slate-500 uppercase">Username</label><input type="text" name="admin_user" value="{{ conf.admin_user }}" class="w-full text-sm"></div>
+            <div class="space-y-1"><label class="text-[10px] text-slate-500 uppercase">Password</label><input type="text" name="admin_pass" value="{{ conf.admin_pass }}" class="w-full text-sm"></div>
+            <div class="space-y-1"><label class="text-[10px] text-slate-500 uppercase">Slider Limit</label><input type="number" name="slider_limit" value="{{ conf.slider_limit }}" class="w-full text-sm"></div>
+            <button type="submit" name="update_profile" class="w-full bg-blue-600 py-3 rounded-xl font-bold shadow-lg">Save Settings</button>
         </form>
-
         <!-- Categories -->
-        <div class="glass p-8 rounded-3xl space-y-4">
+        <div class="glass p-8 rounded-3xl space-y-4 shadow-2xl">
             <h3 class="font-bold text-green-500 uppercase tracking-widest border-b border-slate-800 pb-3">Manage Categories</h3>
-            <form method="POST" class="flex gap-2">
-                <input type="text" name="cat_name" placeholder="New Category" class="w-full text-sm" required>
-                <button type="submit" name="add_cat" class="bg-green-600 px-6 rounded-xl font-bold">ADD</button>
-            </form>
+            <form method="POST" class="flex gap-2"><input type="text" name="cat_name" placeholder="New Category" class="w-full text-sm" required><button type="submit" name="add_cat" class="bg-green-600 px-6 rounded-xl font-bold">ADD</button></form>
             <div class="space-y-2 h-48 overflow-y-auto pt-2">
-                {% for c in cats %}
-                <form method="POST" class="flex justify-between items-center bg-slate-900 p-4 rounded-2xl">
-                    <span class="text-sm font-bold">{{ c.name }}</span>
-                    <input type="hidden" name="cat_id" value="{{ c._id }}">
-                    <button type="submit" name="del_cat" class="text-red-500" onclick="return confirm('Delete Category?')"><i class="fa fa-trash"></i></button>
-                </form>
-                {% endfor %}
+                {% for c in cats %}<form method="POST" class="flex justify-between items-center bg-slate-900 p-4 rounded-2xl"><span>{{ c.name }}</span><input type="hidden" name="cat_id" value="{{ c._id }}"><button type="submit" name="del_cat" class="text-red-500" onclick="return confirm('Delete Category?')"><i class="fa fa-trash"></i></button></form>{% endfor %}
             </div>
         </div>
     </div>
-
-    <!-- Ad Management -->
-    <form method="POST" class="glass p-8 rounded-3xl space-y-6">
-        <h3 class="font-bold text-yellow-500 uppercase tracking-widest border-b border-slate-800 pb-3">Ad Slot Management (7 Slots)</h3>
+    <!-- Ads Management -->
+    <form method="POST" class="glass p-8 rounded-3xl space-y-6 shadow-2xl">
+        <h3 class="font-bold text-yellow-500 uppercase tracking-widest border-b border-slate-800 pb-3">Manage Ads (7 Slots)</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             {% for k, v in conf.ads.items() %}
-            <div class="space-y-1">
-                <label class="text-[10px] uppercase text-slate-500 font-bold">{{ k }} SLOT CODE</label>
-                <textarea name="{{ k }}" rows="3" class="w-full p-3 text-[10px] font-mono">{{ v }}</textarea>
-            </div>
+            <div class="space-y-1"><label class="text-[10px] uppercase text-slate-500 font-bold">{{ k }} Ad Code</label><textarea name="{{ k }}" rows="3" class="w-full p-3 text-[10px] font-mono">{{ v }}</textarea></div>
             {% endfor %}
         </div>
-        <button type="submit" name="update_ads" class="bg-green-600 px-12 py-4 rounded-2xl font-bold shadow-2xl transition hover:bg-green-700">Update Ad System</button>
+        <button type="submit" name="update_ads" class="bg-green-600 px-12 py-4 rounded-2xl font-bold shadow-2xl">Update Ad System</button>
     </form>
 </div>
 """)
