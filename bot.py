@@ -8,7 +8,16 @@ app.secret_key = "secret_movie_key"
 
 # --- MongoDB Connection ---
 # নিচের লিংকে আপনার নিজের MongoDB URI বসান
-MONGO_URI = "mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@cluster.mongodb.net/myDatabase"
+MONGO_URI = "16:30:53.761 Running build in Washington, D.C., USA (East) – iad1
+16:30:53.762 Build machine configuration: 2 cores, 8 GB
+16:30:53.921 Cloning github.com/ya753121988/dramaworldbd (Branch: main, Commit: 75b6f7d)
+16:30:53.923 Previous build caches not available.
+16:30:54.124 Cloning completed: 201.000ms
+16:30:54.483 Running "vercel build"
+16:30:55.233 Vercel CLI 50.37.1
+16:30:55.325 WARNING! Due to `builds` existing in your configuration file, the Build and Development Settings defined in your Project Settings will not apply. Learn More: https://vercel.link/unused-build-settings
+16:30:55.978 Error: Could not find a top-level "app", "application", or "handler" in "bot.py".
+16:30:55.978 Learn More: https://vercel.com/docs/functions/serverless-functions/runtimes/python"
 client = MongoClient(MONGO_URI)
 db = client['movie_portal']
 movies_col = db['movies']
