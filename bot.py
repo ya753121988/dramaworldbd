@@ -150,6 +150,25 @@ def index():
     <!DOCTYPE html><html><head>{CSS}<title>{conf['site_name']}</title></head><body>
     {get_navbar(conf)}
     <div class="container mx-auto px-4 py-6">
+        
+        <!-- Search Bar Option Start -->
+        <div class="mb-10 max-w-2xl mx-auto">
+            <form action="/" method="GET" class="relative group">
+                <input type="text" name="search" placeholder="Search Your Favorite Drama..." 
+                       class="w-full bg-slate-900/50 border-2 border-slate-800 py-4 px-6 rounded-2xl text-white focus:border-blue-600 transition-all duration-300 shadow-2xl"
+                       value="{{{{ request.args.get('search', '') }}}}">
+                <button type="submit" class="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 p-2.5 rounded-xl transition-colors shadow-lg">
+                    <i class="fa fa-search text-white"></i>
+                </button>
+            </form>
+            {{% if request.args.get('search') %}}
+                <div class="text-center mt-4">
+                    <a href="/" class="text-xs font-bold text-blue-500 uppercase tracking-widest hover:text-white transition"><i class="fa fa-times-circle"></i> Clear Search</a>
+                </div>
+            {{% endif %}}
+        </div>
+        <!-- Search Bar Option End -->
+
         <div class="mb-6 text-center"> {{{{ conf.ads.header | safe }}}} </div>
 
         {{% if slider_movies %}}
