@@ -33,6 +33,7 @@ def get_config():
             "admin_user": "", # Empty initially to trigger setup
             "admin_pass": "", # Empty initially to trigger setup
             "slider_limit": 5,
+            "home_poster_height": "320px", # Default height for home cards
             "help_text": "Welcome to DramaWorld BD. Join our telegram channel for more updates and direct help.",
             "channel_link": "https://t.me/yourchannel",
             "ads": {
@@ -42,17 +43,18 @@ def get_config():
         }
         settings_col.insert_one(conf)
     
-    required_keys = ["site_name", "logo_url", "help_text", "channel_link", "slider_limit", "ads", "admin_user", "admin_pass"]
+    required_keys = ["site_name", "logo_url", "help_text", "channel_link", "slider_limit", "ads", "admin_user", "admin_pass", "home_poster_height"]
     for key in required_keys:
         if key not in conf:
             if key == "ads":
                 conf["ads"] = {"header": "", "middle": "", "footer": "", "native": "", "popunder": "", "socialbar": "", "banner": ""}
             elif key == "slider_limit": conf[key] = 5
+            elif key == "home_poster_height": conf[key] = "320px"
             elif key == "admin_user" or key == "admin_pass": conf[key] = ""
             else: conf[key] = "Not Set"
     return conf
 
-# --- Helper Function for Image Processing (Updated for both Poster & Thumbnail) ---
+# --- Helper Function for Image Processing ---
 def process_media(req, file_key, url_key):
     file = req.files.get(file_key)
     if file and file.filename != '':
@@ -73,10 +75,10 @@ CSS = """
     .movie-card { transition: 0.4s; border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; overflow: hidden; background: #0f172a; position: relative; }
     .movie-card:hover { transform: translateY(-10px); border-color: #3b82f6; box-shadow: 0 20px 40px -15px rgba(59, 130, 246, 0.5); }
     
-    /* Poster Fix: Showing full image */
     .full-poster { width: 100%; height: auto; object-fit: contain; border-radius: 2rem; }
-    .card-thumb { width: 100%; height: 260px; object-fit: cover; }
-    @media(min-width: 768px) { .card-thumb { height: 320px; } }
+    
+    /* Dynamic height logic handled in index template */
+    .card-thumb { width: 100%; object-fit: cover; }
 
     .slider-box { position: relative; width: 100%; height: 230px; overflow: hidden; border-radius: 30px; border: 1px solid rgba(59, 130, 246, 0.2); }
     @media(min-width: 768px) { .slider-box { height: 480px; } }
@@ -189,7 +191,10 @@ def index():
         {{% if slider_movies %}}
         <div class="slider-box mb-12 shadow-2xl">
             {{% for sm in slider_movies %}}
-            <a href="/movie/{{{{ sm._id }}}}"><img src="{{{{ sm.poster }}}}" class="slide-img"></a>
+            <a href="/movie/{{{{ sm._id }}}}">
+                <!-- Using Thumbnail in Slider -->
+                <img src="{{{{ sm.thumbnail if sm.thumbnail else sm.poster }}}}" class="slide-img">
+            </a>
             {{% endfor %}}
         </div>
         {{% endif %}}
@@ -203,7 +208,8 @@ def index():
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
                     {{% for m in ms %}}
                     <div class="movie-card cursor-pointer" onclick="location.href='/movie/{{{{ m._id }}}}'">
-                        <img src="{{{{ m.thumbnail if m.thumbnail else m.poster }}}}" class="card-thumb">
+                        <!-- Using Poster on Home Page with adjustable height -->
+                        <img src="{{{{ m.poster }}}}" class="card-thumb" style="height: {{{{ conf.home_poster_height }}}}">
                         <div class="absolute top-3 left-3 bg-blue-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase border border-white/20">{{{{ m.badge }}}}</div>
                         <div class="p-4 bg-slate-900/90 backdrop-blur-md"><h3 class="font-bold text-sm truncate uppercase italic tracking-tighter">{{{{ m.name }}}}</h3></div>
                     </div>
@@ -245,7 +251,8 @@ def movie_details(id):
     <div class="container mx-auto px-4 py-10">
         <div class="flex flex-col md:flex-row gap-10">
             <div class="w-full md:w-[450px]">
-                <img src="{{{{ movie.poster }}}}" class="full-poster shadow-2xl border-4 border-slate-900">
+                <!-- Using Thumbnail in Detail Page -->
+                <img src="{{{{ movie.thumbnail if movie.thumbnail else movie.poster }}}}" class="full-poster shadow-2xl border-4 border-slate-900">
             </div>
             <div class="flex-1">
                 <span class="bg-blue-600 px-5 py-1 rounded-full text-xs font-bold uppercase shadow-lg">{{{{ movie.badge }}}}</span>
@@ -674,12 +681,12 @@ def add_movie():
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div class="space-y-4">
-                            <h4 class="text-xs font-bold text-blue-500 uppercase">1. MOVIE POSTER (Vertical)</h4>
+                            <h4 class="text-xs font-bold text-blue-500 uppercase">1. MOVIE POSTER (Home View)</h4>
                             <input type="text" name="poster" placeholder="Poster URL">
                             <input type="file" name="poster_file" accept="image/*" class="text-xs">
                         </div>
                         <div class="space-y-4">
-                            <h4 class="text-xs font-bold text-green-500 uppercase">2. THUMBNAIL (Card View)</h4>
+                            <h4 class="text-xs font-bold text-green-500 uppercase">2. THUMBNAIL (Detail & Slider)</h4>
                             <input type="text" name="thumbnail" placeholder="Thumbnail URL">
                             <input type="file" name="thumb_file" accept="image/*" class="text-xs">
                         </div>
@@ -726,7 +733,8 @@ def admin_settings():
                 "logo_url": request.form.get('logo_url'),
                 "help_text": request.form.get('help_text'),
                 "channel_link": request.form.get('channel_link'),
-                "slider_limit": int(request.form.get('slider_limit', 5))
+                "slider_limit": int(request.form.get('slider_limit', 5)),
+                "home_poster_height": request.form.get('home_poster_height', '320px')
             }})
         elif 'update_profile' in request.form:
             settings_col.update_one({"type": "config"}, {"$set": {
@@ -764,6 +772,7 @@ def admin_settings():
                     <h3 class="text-blue-500 font-black uppercase text-xs tracking-widest border-b border-slate-800 pb-3">Branding & Social</h3>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Site Display Name</label><input type="text" name="site_name" value="{{{{conf.site_name}}}}"></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Logo Image URL</label><input type="text" name="logo_url" value="{{{{conf.logo_url}}}}"></div>
+                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Home Poster Height (e.g. 320px or 250px)</label><input type="text" name="home_poster_height" value="{{{{conf.home_poster_height}}}}"></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Help Page Description</label><textarea name="help_text" rows="3">{{{{conf.help_text}}}}</textarea></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Telegram Link</label><input type="text" name="channel_link" value="{{{{conf.channel_link}}}}"></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Home Slider Limit</label><input type="number" name="slider_limit" value="{{{{conf.slider_limit}}}}"></div>
@@ -850,12 +859,12 @@ def edit_movie(id):
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8 border-y border-slate-800 py-6">
                 <div class="space-y-4">
-                    <h4 class="text-xs font-bold text-blue-500">POSTER (Vertical)</h4>
+                    <h4 class="text-xs font-bold text-blue-500">POSTER (Home View)</h4>
                     <input type="text" name="poster" placeholder="URL" value="{{{{movie.poster if movie.poster.startswith('http') else ''}}}}">
                     <input type="file" name="poster_file" accept="image/*" class="text-xs">
                 </div>
                 <div class="space-y-4">
-                    <h4 class="text-xs font-bold text-green-500">THUMBNAIL (Card View)</h4>
+                    <h4 class="text-xs font-bold text-green-500">THUMBNAIL (Detail & Slider)</h4>
                     <input type="text" name="thumbnail" placeholder="URL" value="{{{{movie.thumbnail if movie.thumbnail and movie.thumbnail.startswith('http') else ''}}}}">
                     <input type="file" name="thumb_file" accept="image/*" class="text-xs">
                 </div>
