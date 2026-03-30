@@ -29,7 +29,7 @@ def get_config():
             "type": "config",
             "site_name": "DRAMA WORLD",
             "logo_url": "https://cdn-icons-png.flaticon.com/512/705/705062.png",
-            "admin_user": "admin",
+            "admin_user": "adminm",
             "admin_pass": "admin123",
             "slider_limit": 5,
             "help_text": "Welcome to DramaWorld BD. Join our telegram channel for more updates and direct help.",
