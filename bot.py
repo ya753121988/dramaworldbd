@@ -50,8 +50,10 @@ def get_config():
             else: conf[key] = "Not Set"
     return conf
 
-# --- Global CSS (Premium) ---
+# --- Global CSS & Responsive Meta ---
 CSS = """
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
@@ -289,12 +291,19 @@ def register():
 def login():
     conf = get_config()
     if request.method == 'POST':
-        user, pw = request.form.get('user'), request.form.get('pass')
+        user = request.form.get('user', '').strip()
+        pw = request.form.get('pass', '').strip()
+        
+        # Admin Login Check
         if user == conf['admin_user'] and pw == conf['admin_pass']:
+            session.clear() # Clear any old session
             session['admin'] = True
             return redirect('/admin')
+            
+        # User Login Check
         u = users_col.find_one({"user": user, "pass": pw})
         if u:
+            session.clear()
             session['user_id'] = str(u['_id'])
             session['user_name'] = u['name']
             return redirect('/')
@@ -304,7 +313,7 @@ def login():
     <!DOCTYPE html><html><head>{CSS}<title>Login</title></head>
     <body class="flex items-center justify-center min-h-screen p-4">
         <form method="POST" class="glass p-10 rounded-[2.5rem] w-full max-w-md space-y-6 shadow-2xl border-t-4 border-blue-600">
-            <h2 class="text-3xl font-black text-center text-blue-500 uppercase italic">User Login</h2>
+            <h2 class="text-3xl font-black text-center text-blue-500 uppercase italic">Login Access</h2>
             {{% with messages = get_flashed_messages() %}}{{% if messages %}}<p class="text-red-500 text-xs text-center font-bold">{{{{messages[0]}}}}</p>{{% endif %}}{{% endwith %}}
             <input type="text" name="user" placeholder="Username" required>
             <input type="password" name="pass" placeholder="Password" required>
