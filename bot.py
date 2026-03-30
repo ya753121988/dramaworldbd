@@ -33,7 +33,9 @@ def get_config():
             "admin_user": "", # Empty initially to trigger setup
             "admin_pass": "", # Empty initially to trigger setup
             "slider_limit": 5,
-            "home_poster_height": "320px", # Default height for home cards
+            "slider_height_desktop": "480px",
+            "slider_height_mobile": "230px",
+            "home_poster_height": "320px", 
             "help_text": "Welcome to DramaWorld BD. Join our telegram channel for more updates and direct help.",
             "channel_link": "https://t.me/yourchannel",
             "ads": {
@@ -43,13 +45,15 @@ def get_config():
         }
         settings_col.insert_one(conf)
     
-    required_keys = ["site_name", "logo_url", "help_text", "channel_link", "slider_limit", "ads", "admin_user", "admin_pass", "home_poster_height"]
+    required_keys = ["site_name", "logo_url", "help_text", "channel_link", "slider_limit", "ads", "admin_user", "admin_pass", "home_poster_height", "slider_height_desktop", "slider_height_mobile"]
     for key in required_keys:
         if key not in conf:
             if key == "ads":
                 conf["ads"] = {"header": "", "middle": "", "footer": "", "native": "", "popunder": "", "socialbar": "", "banner": ""}
             elif key == "slider_limit": conf[key] = 5
             elif key == "home_poster_height": conf[key] = "320px"
+            elif key == "slider_height_desktop": conf[key] = "480px"
+            elif key == "slider_height_mobile": conf[key] = "230px"
             elif key == "admin_user" or key == "admin_pass": conf[key] = ""
             else: conf[key] = "Not Set"
     return conf
@@ -63,6 +67,7 @@ def process_media(req, file_key, url_key):
     return req.form.get(url_key)
 
 # --- Global CSS & Responsive Meta ---
+# Note: Styles for slider and card heights are now dynamic in the templates
 CSS = """
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -76,12 +81,9 @@ CSS = """
     .movie-card:hover { transform: translateY(-10px); border-color: #3b82f6; box-shadow: 0 20px 40px -15px rgba(59, 130, 246, 0.5); }
     
     .full-poster { width: 100%; height: auto; object-fit: contain; border-radius: 2rem; }
-    
-    /* Dynamic height logic handled in index template */
     .card-thumb { width: 100%; object-fit: cover; }
 
-    .slider-box { position: relative; width: 100%; height: 230px; overflow: hidden; border-radius: 30px; border: 1px solid rgba(59, 130, 246, 0.2); }
-    @media(min-width: 768px) { .slider-box { height: 480px; } }
+    .slider-box { position: relative; width: 100%; overflow: hidden; border-radius: 30px; border: 1px solid rgba(59, 130, 246, 0.2); }
     .slide-img { display: none; width: 100%; height: 100%; object-fit: cover; animation: fade 1.5s ease; }
     .slide-active { display: block; }
     @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -164,7 +166,12 @@ def index():
         slider_movies = list(movies_col.find().sort("_id", -1).limit(int(conf['slider_limit'])))
 
     html_content = f"""
-    <!DOCTYPE html><html><head>{CSS}<title>{conf['site_name']}</title></head><body>
+    <!DOCTYPE html><html><head>{CSS}
+    <style>
+        .slider-box {{ height: {conf['slider_height_mobile']}; }}
+        @media(min-width: 768px) {{ .slider-box {{ height: {conf['slider_height_desktop']}; }} }}
+    </style>
+    <title>{conf['site_name']}</title></head><body>
     {get_navbar(conf)}
     <div class="container mx-auto px-4 py-6">
         
@@ -643,7 +650,7 @@ def add_movie():
         thumb_val = process_media(request, 'thumb_file', 'thumbnail')
         
         labels, urls = request.form.getlist('l_name[]'), request.form.getlist('l_url[]')
-        links = [{"label": labels[i], "url": urls[i]} for i in range(len(labels))]
+        links = [{"label": labels[i], "url": urls[i]} for i in range(len(labels)) if labels[i] and urls[i]]
         movies_col.insert_one({
             "name": request.form.get('name'), 
             "poster": poster_val,
@@ -707,11 +714,15 @@ def add_movie():
             </div>
         </main>
         <script>
-            function addL(){{
+            function addL(label = '', url = ''){{
                 const b = document.getElementById('btn-box');
                 const d = document.createElement('div');
-                d.className = "flex gap-4 p-4 glass rounded-2xl border border-white/5";
-                d.innerHTML = `<input type="text" name="l_name[]" placeholder="Button Label" required class="text-sm"><input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm">`;
+                d.className = "flex gap-4 p-4 glass rounded-2xl border border-white/5 relative group";
+                d.innerHTML = `
+                    <input type="text" name="l_name[]" placeholder="Button Label (e.g. Ep 01)" required class="text-sm" value="${{label}}">
+                    <input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm" value="${{url}}">
+                    <button type="button" onclick="this.parentElement.remove()" class="text-red-500 p-2 hover:bg-red-500/10 rounded-lg"><i class="fa fa-times"></i></button>
+                `;
                 b.appendChild(d);
             }}
             addL();
@@ -734,6 +745,8 @@ def admin_settings():
                 "help_text": request.form.get('help_text'),
                 "channel_link": request.form.get('channel_link'),
                 "slider_limit": int(request.form.get('slider_limit', 5)),
+                "slider_height_desktop": request.form.get('slider_height_desktop', '480px'),
+                "slider_height_mobile": request.form.get('slider_height_mobile', '230px'),
                 "home_poster_height": request.form.get('home_poster_height', '320px')
             }})
         elif 'update_profile' in request.form:
@@ -772,6 +785,12 @@ def admin_settings():
                     <h3 class="text-blue-500 font-black uppercase text-xs tracking-widest border-b border-slate-800 pb-3">Branding & Social</h3>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Site Display Name</label><input type="text" name="site_name" value="{{{{conf.site_name}}}}"></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Logo Image URL</label><input type="text" name="logo_url" value="{{{{conf.logo_url}}}}"></div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Slider Height (Desktop)</label><input type="text" name="slider_height_desktop" value="{{{{conf.slider_height_desktop}}}}" placeholder="480px"></div>
+                        <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Slider Height (Mobile)</label><input type="text" name="slider_height_mobile" value="{{{{conf.slider_height_mobile}}}}" placeholder="230px"></div>
+                    </div>
+                    
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Home Poster Height (e.g. 320px or 250px)</label><input type="text" name="home_poster_height" value="{{{{conf.home_poster_height}}}}"></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Help Page Description</label><textarea name="help_text" rows="3">{{{{conf.help_text}}}}</textarea></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Telegram Link</label><input type="text" name="channel_link" value="{{{{conf.channel_link}}}}"></div>
@@ -836,7 +855,7 @@ def edit_movie(id):
         if not thumb_val: thumb_val = movie.get('thumbnail')
 
         labels, urls = request.form.getlist('l_name[]'), request.form.getlist('l_url[]')
-        links = [{"label": labels[i], "url": urls[i]} for i in range(len(labels))]
+        links = [{"label": labels[i], "url": urls[i]} for i in range(len(labels)) if labels[i] and urls[i]]
         movies_col.update_one({"_id": ObjectId(id)}, {"$set": {
             "name": request.form.get('name'), 
             "poster": poster_val,
@@ -885,7 +904,11 @@ def edit_movie(id):
             <div id="btn-box" class="space-y-3 pt-6 border-t border-slate-800">
                 <h4 class="text-blue-500 font-black uppercase text-xs tracking-widest mb-4">Manage Links</h4>
                 {{% for l in movie.links %}}
-                <div class="flex gap-3"><input name="l_name[]" value="{{{{l.label}}}}" placeholder="Label"><input name="l_url[]" value="{{{{l.url}}}}" placeholder="URL"></div>
+                <div class="flex gap-3 relative group">
+                    <input name="l_name[]" value="{{{{l.label}}}}" placeholder="Label">
+                    <input name="l_url[]" value="{{{{l.url}}}}" placeholder="URL">
+                    <button type="button" onclick="this.parentElement.remove()" class="text-red-500"><i class="fa fa-times"></i></button>
+                </div>
                 {{% endfor %}}
             </div>
             <button type="button" onclick="addL()" class="text-blue-400 font-bold text-xs uppercase hover:underline tracking-widest mt-2">+ Add More Link</button>
@@ -895,11 +918,15 @@ def edit_movie(id):
         </form>
     </div>
     <script>
-        function addL(){{
+        function addL(label = '', url = ''){{
             const b = document.getElementById('btn-box');
             const d = document.createElement('div');
-            d.className = "flex gap-3 p-2 glass rounded-xl border border-white/5 mt-2";
-            d.innerHTML = `<input type="text" name="l_name[]" placeholder="Button Label" required class="text-sm w-full"><input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm w-full">`;
+            d.className = "flex gap-3 p-2 glass rounded-xl border border-white/5 mt-2 relative group";
+            d.innerHTML = `
+                <input type="text" name="l_name[]" placeholder="Button Label" required class="text-sm w-full" value="${{label}}">
+                <input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm w-full" value="${{url}}">
+                <button type="button" onclick="this.parentElement.remove()" class="text-red-500 p-2"><i class="fa fa-times"></i></button>
+            `;
             b.appendChild(d);
         }}
     </script>
