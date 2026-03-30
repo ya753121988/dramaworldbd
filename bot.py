@@ -67,7 +67,6 @@ def process_media(req, file_key, url_key):
     return req.form.get(url_key)
 
 # --- Global CSS & Responsive Meta ---
-# Note: Styles for slider and card heights are now dynamic in the templates
 CSS = """
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -199,7 +198,6 @@ def index():
         <div class="slider-box mb-12 shadow-2xl">
             {{% for sm in slider_movies %}}
             <a href="/movie/{{{{ sm._id }}}}">
-                <!-- Using Thumbnail in Slider -->
                 <img src="{{{{ sm.thumbnail if sm.thumbnail else sm.poster }}}}" class="slide-img">
             </a>
             {{% endfor %}}
@@ -215,7 +213,6 @@ def index():
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
                     {{% for m in ms %}}
                     <div class="movie-card cursor-pointer" onclick="location.href='/movie/{{{{ m._id }}}}'">
-                        <!-- Using Poster on Home Page with adjustable height -->
                         <img src="{{{{ m.poster }}}}" class="card-thumb" style="height: {{{{ conf.home_poster_height }}}}">
                         <div class="absolute top-3 left-3 bg-blue-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase border border-white/20">{{{{ m.badge }}}}</div>
                         <div class="p-4 bg-slate-900/90 backdrop-blur-md"><h3 class="font-bold text-sm truncate uppercase italic tracking-tighter">{{{{ m.name }}}}</h3></div>
@@ -258,7 +255,6 @@ def movie_details(id):
     <div class="container mx-auto px-4 py-10">
         <div class="flex flex-col md:flex-row gap-10">
             <div class="w-full md:w-[450px]">
-                <!-- Using Thumbnail in Detail Page -->
                 <img src="{{{{ movie.thumbnail if movie.thumbnail else movie.poster }}}}" class="full-poster shadow-2xl border-4 border-slate-900">
             </div>
             <div class="flex-1">
@@ -701,10 +697,20 @@ def add_movie():
 
                     <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Badge Info</label><input type="text" name="badge" placeholder="e.g. 1080p Dual Audio"></div>
                     
+                    <!-- Link Management -->
                     <div id="btn-box" class="space-y-4 pt-6 border-t border-slate-800">
                         <h4 class="text-blue-500 font-black uppercase text-xs tracking-widest flex items-center gap-2 mb-4"><i class="fa fa-link"></i> Download/Watch Link Management</h4>
                     </div>
-                    <button type="button" onclick="addL()" class="text-blue-400 font-bold text-xs uppercase hover:underline tracking-widest">+ Add Direct Link Button</button>
+
+                    <!-- Multi Link Section Start -->
+                    <div class="mt-6 p-4 border border-blue-500/20 bg-blue-500/5 rounded-2xl">
+                        <h4 class="text-blue-500 font-black uppercase text-[10px] mb-2 tracking-widest">Multi Link Adder (Bulk)</h4>
+                        <textarea id="multi-link-area" rows="4" class="text-xs" placeholder="Format: Label - URL (one per line)&#10;Download 1080p - https://t.me/link1&#10;Download 720p - https://t.me/link2"></textarea>
+                        <button type="button" onclick="processMultiLinks()" class="mt-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase hover:bg-blue-600 hover:text-white transition">Process Multi Links</button>
+                    </div>
+                    <!-- Multi Link Section End -->
+
+                    <button type="button" onclick="addL()" class="text-blue-400 font-bold text-xs uppercase hover:underline tracking-widest">+ Add Single Link Button</button>
                     
                     <div class="pt-8 flex gap-4">
                         <button class="bg-blue-600 flex-1 py-4 rounded-2xl font-black text-white shadow-xl uppercase tracking-widest">Publish to Site</button>
@@ -717,7 +723,7 @@ def add_movie():
             function addL(label = '', url = ''){{
                 const b = document.getElementById('btn-box');
                 const d = document.createElement('div');
-                d.className = "flex gap-4 p-4 glass rounded-2xl border border-white/5 relative group";
+                d.className = "flex gap-4 p-4 glass rounded-2xl border border-white/5 relative group animate-fade-in";
                 d.innerHTML = `
                     <input type="text" name="l_name[]" placeholder="Button Label (e.g. Ep 01)" required class="text-sm" value="${{label}}">
                     <input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm" value="${{url}}">
@@ -725,6 +731,21 @@ def add_movie():
                 `;
                 b.appendChild(d);
             }}
+
+            function processMultiLinks() {{
+                const area = document.getElementById('multi-link-area');
+                const lines = area.value.split('\\n');
+                lines.forEach(line => {{
+                    if(line.includes('-')){{
+                        const parts = line.split('-');
+                        const label = parts[0].trim();
+                        const url = parts.slice(1).join('-').trim();
+                        if(label && url) addL(label, url);
+                    }}
+                }});
+                area.value = '';
+            }}
+
             addL();
         </script>
     </body></html>
@@ -791,7 +812,7 @@ def admin_settings():
                         <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Slider Height (Mobile)</label><input type="text" name="slider_height_mobile" value="{{{{conf.slider_height_mobile}}}}" placeholder="230px"></div>
                     </div>
                     
-                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Home Poster Height (e.g. 320px or 250px)</label><input type="text" name="home_poster_height" value="{{{{conf.home_poster_height}}}}"></div>
+                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Home Poster Height</label><input type="text" name="home_poster_height" value="{{{{conf.home_poster_height}}}}"></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Help Page Description</label><textarea name="help_text" rows="3">{{{{conf.help_text}}}}</textarea></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Telegram Link</label><input type="text" name="channel_link" value="{{{{conf.channel_link}}}}"></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Home Slider Limit</label><input type="number" name="slider_limit" value="{{{{conf.slider_limit}}}}"></div>
@@ -911,6 +932,15 @@ def edit_movie(id):
                 </div>
                 {{% endfor %}}
             </div>
+
+            <!-- Multi Link Section Edit Start -->
+            <div class="mt-6 p-4 border border-blue-500/20 bg-blue-500/5 rounded-2xl">
+                <h4 class="text-blue-500 font-black uppercase text-[10px] mb-2 tracking-widest">Multi Link Adder (Bulk)</h4>
+                <textarea id="multi-link-area" rows="4" class="text-xs" placeholder="Format: Label - URL (one per line)&#10;Download 1080p - https://t.me/link1"></textarea>
+                <button type="button" onclick="processMultiLinks()" class="mt-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase hover:bg-blue-600 hover:text-white transition">Process Multi Links</button>
+            </div>
+            <!-- Multi Link Section Edit End -->
+
             <button type="button" onclick="addL()" class="text-blue-400 font-bold text-xs uppercase hover:underline tracking-widest mt-2">+ Add More Link</button>
 
             <button class="bg-blue-600 w-full py-4 rounded-xl font-bold uppercase tracking-widest mt-6">Update Database</button>
@@ -928,6 +958,20 @@ def edit_movie(id):
                 <button type="button" onclick="this.parentElement.remove()" class="text-red-500 p-2"><i class="fa fa-times"></i></button>
             `;
             b.appendChild(d);
+        }}
+
+        function processMultiLinks() {{
+            const area = document.getElementById('multi-link-area');
+            const lines = area.value.split('\\n');
+            lines.forEach(line => {{
+                if(line.includes('-')){{
+                    const parts = line.split('-');
+                    const label = parts[0].trim();
+                    const url = parts.slice(1).join('-').trim();
+                    if(label && url) addL(label, url);
+                }}
+            }});
+            area.value = '';
         }}
     </script>
     </body></html>
