@@ -50,7 +50,7 @@ def get_config():
             else: conf[key] = "Not Set"
     return conf
 
-# --- Global CSS & Responsive Meta ---
+# --- Global CSS & Responsive Meta (হুবহু আপনার দেওয়া CSS) ---
 CSS = """
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -80,8 +80,7 @@ CSS = """
 </style>
 """
 
-# --- HELPERS ---
-
+# --- UTILITY: NAVBAR & FOOTER ---
 def get_navbar(conf):
     user_status = '<a href="/login" class="bg-blue-600 px-5 py-2 rounded-full text-xs font-bold text-white shadow-lg text-decoration-none">LOGIN</a>'
     if 'user_id' in session:
@@ -245,20 +244,18 @@ def help_page():
     """
     return render_template_string(html, conf=conf)
 
-# --- USER AUTHENTICATION ---
+# --- USER AUTHENTICATION (NO WP) ---
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         name, user, pw = request.form.get('name'), request.form.get('user'), request.form.get('pass')
-        if users_col.find_one({"user": user}):
-            flash("Username already exists!")
+        if users_col.find_one({"user": user}): flash("Username already exists!")
         else:
             uid = "DW" + str(ObjectId())[-6:].upper()
             users_col.insert_one({"uid": uid, "name": name, "user": user, "pass": pw})
             flash("Registration Successful! Please Login.")
             return redirect('/login')
-    
     html = f"""
     <!DOCTYPE html><html><head>{CSS}<title>Sign Up</title></head>
     <body class="flex items-center justify-center min-h-screen p-4">
@@ -286,7 +283,6 @@ def login():
             session['user_name'] = u['name']
             return redirect('/')
         flash("Invalid Credentials!")
-    
     html = f"""
     <!DOCTYPE html><html><head>{CSS}<title>Login</title></head>
     <body class="flex items-center justify-center min-h-screen p-4">
@@ -295,11 +291,8 @@ def login():
             {{% with messages = get_flashed_messages() %}}{{% if messages %}}<p class="text-red-500 text-xs text-center font-bold">{{{{messages[0]}}}}</p>{{% endif %}}{{% endwith %}}
             <input type="text" name="user" placeholder="Username" required>
             <input type="password" name="pass" placeholder="Password" required>
-            <button class="bg-blue-600 w-full py-4 rounded-2xl font-bold text-white shadow-xl uppercase">Access Account</button>
-            <div class="flex justify-between text-xs text-slate-500 px-2 mt-4">
-                <span>New? <a href="/register" class="text-blue-500 font-bold">Sign Up</a></span>
-                <a href="/" class="hover:text-white">Home</a>
-            </div>
+            <button class="bg-blue-600 w-full py-4 rounded-2xl font-bold text-white shadow-xl uppercase">Login</button>
+            <p class="text-center text-xs text-slate-500 mt-4">New? <a href="/register" class="text-blue-500 font-bold">Sign Up</a></p>
         </form>
     </body></html>
     """
@@ -310,7 +303,7 @@ def logout():
     session.clear()
     return redirect('/')
 
-# --- USER FEATURES & HISTORY ---
+# --- USER SYSTEM: REQUESTS, MAIL, PROFILE ---
 
 @app.route('/request', methods=['GET', 'POST'])
 def request_movie():
@@ -323,36 +316,29 @@ def request_movie():
             "status": "Pending", "date": datetime.now().strftime("%d %b %Y")
         })
         flash("Request submitted!")
-        return redirect('/mailbox')
+        return redirect('/request')
     
-    # History logic for user
     my_requests = list(requests_col.find({"user_id": session['user_id']}).sort("_id", -1))
     
     html = f"""
     <!DOCTYPE html><html><head>{CSS}<title>Request</title></head><body>
     {get_navbar(conf)}
     <div class="container mx-auto px-4 py-10 max-w-4xl">
-        <form method="POST" class="glass p-10 rounded-[3rem] space-y-6 border-t-4 border-blue-600 mb-12 shadow-2xl">
+        <form method="POST" class="glass p-10 rounded-[3rem] space-y-6 border-t-4 border-blue-600 shadow-2xl mb-12">
             <h2 class="text-3xl font-black text-blue-500 uppercase italic">Request Movie 🚀</h2>
+            {{% with messages = get_flashed_messages() %}}{{% if messages %}}<p class="text-green-500 text-center font-bold">{{{{messages[0]}}}}</p>{{% endif %}}{{% endwith %}}
             <input type="text" name="movie_name" placeholder="Movie/Drama Name" required>
             <input type="email" name="email" placeholder="Your Email" required>
-            <button class="bg-blue-600 w-full py-4 rounded-2xl font-bold text-white uppercase shadow-xl">Submit</button>
+            <button class="bg-blue-600 w-full py-4 rounded-2xl font-bold text-white uppercase shadow-xl">Submit Request</button>
         </form>
-
+        
         <h3 class="text-2xl font-black mb-6 uppercase italic text-blue-500"><i class="fa fa-history"></i> My Request History</h3>
         <div class="space-y-4">
-            {{% if not my_requests %}}
-            <div class="glass p-10 rounded-3xl text-center text-slate-600 italic">No request history found.</div>
-            {{% endif %}}
+            {{% if not my_requests %}}<div class="glass p-10 rounded-3xl text-center text-slate-500 italic">No history found.</div>{{% endif %}}
             {{% for r in my_requests %}}
-            <div class="glass p-6 rounded-3xl flex justify-between items-center shadow-lg border-l-4 {{ 'border-yellow-500' if r.status == 'Pending' else 'border-red-500' }}">
-                <div>
-                    <h4 class="font-bold text-blue-400 text-lg uppercase">{{{{ r.movie_name }}}}</h4>
-                    <span class="text-[10px] text-slate-500 uppercase font-bold">{{{{ r.date }}}}</span>
-                </div>
-                <span class="px-4 py-1 rounded-full text-[10px] font-black uppercase {{ 'bg-yellow-500/20 text-yellow-500' if r.status == 'Pending' else 'bg-red-500/20 text-red-500' }}">
-                    {{{{ r.status }}}}
-                </span>
+            <div class="glass p-6 rounded-3xl flex justify-between items-center border-l-4 border-blue-600">
+                <div><h4 class="font-bold text-blue-400 uppercase tracking-tighter">{{{{ r.movie_name }}}}</h4><span class="text-[10px] text-slate-500">{{{{ r.date }}}}</span></div>
+                <span class="px-4 py-1 rounded-full text-[10px] font-black uppercase bg-slate-800 text-yellow-500 border border-yellow-500/30">{{{{ r.status }}}}</span>
             </div>
             {{% endfor %}}
         </div>
@@ -360,7 +346,7 @@ def request_movie():
     {get_footer()}
     </body></html>
     """
-    return render_template_string(html, my_requests=my_requests, conf=conf)
+    return render_template_string(html, conf=conf, my_requests=my_requests)
 
 @app.route('/mailbox')
 def mailbox():
@@ -371,13 +357,13 @@ def mailbox():
     <!DOCTYPE html><html><head>{CSS}<title>MailBox</title></head><body>
     {get_navbar(conf)}
     <div class="container mx-auto px-4 py-10 max-w-4xl">
-        <h2 class="text-3xl font-black mb-8 text-blue-500 uppercase italic"><i class="fa fa-envelope-open"></i> MailBox</h2>
+        <h2 class="text-3xl font-black mb-8 text-blue-500 uppercase italic"><i class="fa fa-envelope-open-text"></i> MailBox</h2>
         <div class="space-y-4">
-            {{% if not notifs %}} <div class="glass p-10 rounded-3xl text-center text-slate-600">No mail yet.</div> {{% endif %}}
+            {{% if not notifs %}}<div class="glass p-10 rounded-3xl text-center text-slate-500 italic">No notifications found.</div>{{% endif %}}
             {{% for n in notifs %}}
             <div class="glass p-6 rounded-3xl border-l-4 border-blue-600 shadow-xl">
                 <p class="text-sm font-semibold text-slate-200">{{{{ n.message }}}}</p>
-                <span class="text-[10px] text-slate-600 uppercase font-bold">{{{{ n.date }}}}</span>
+                <span class="text-[10px] text-slate-600 uppercase">{{{{ n.date }}}}</span>
             </div>
             {{% endfor %}}
         </div>
@@ -397,13 +383,10 @@ def profile():
     {get_navbar(conf)}
     <div class="container mx-auto px-4 py-10 text-center">
         <div class="glass p-12 rounded-[3.5rem] max-w-md mx-auto border-b-4 border-blue-600 shadow-2xl">
-            <div class="w-24 h-24 bg-blue-600 rounded-full mx-auto flex items-center justify-center text-4xl font-black mb-6 border-4 border-slate-900 shadow-xl">{u['name'][0]}</div>
-            <h2 class="text-3xl font-black mb-1 uppercase italic tracking-tighter">{u['name']}</h2>
-            <p class="text-blue-500 font-bold text-xs mb-8 uppercase tracking-widest">Member ID: {u['uid']}</p>
-            <div class="space-y-3">
-                <a href="/mailbox" class="btn-premium flex items-center justify-center gap-2"><i class="fa fa-envelope"></i> My MailBox</a>
-                <a href="/logout" class="block py-4 text-red-500 font-black text-xs uppercase tracking-widest hover:underline">Sign Out</a>
-            </div>
+            <div class="w-24 h-24 bg-blue-600 rounded-full mx-auto flex items-center justify-center text-4xl font-black mb-6 shadow-xl border-4 border-slate-900">{u['name'][0]}</div>
+            <h2 class="text-3xl font-black mb-1 uppercase italic">{u['name']}</h2>
+            <p class="text-blue-500 font-bold text-xs mb-8">ID: {u['uid']}</p>
+            <a href="/logout" class="block py-4 text-red-500 font-black text-xs uppercase hover:underline">Sign Out</a>
         </div>
     </div>
     {get_footer()}
@@ -416,27 +399,27 @@ def profile():
 @app.route('/admin/wp/login', methods=['GET', 'POST'])
 def admin_login():
     conf = get_config()
-    # Variables for Admin Creds
-    A_USER = conf.get('admin_user', 'admin')
-    A_PASS = conf.get('admin_pass', 'admin123')
+    # Variables for Admin Credentials
+    ADMIN_USER_KEY = str(conf.get('admin_user', 'admin')).strip()
+    ADMIN_PASS_KEY = str(conf.get('admin_pass', 'admin123')).strip()
 
     if request.method == 'POST':
-        user, pw = request.form.get('user'), request.form.get('pass')
-        if user == A_USER and pw == A_PASS:
+        user, pw = request.form.get('user', '').strip(), request.form.get('pass', '').strip()
+        if user == ADMIN_USER_KEY and pw == ADMIN_PASS_KEY:
             session.clear()
             session['admin'] = True
             return redirect('/admin/wp')
         flash("Invalid Credentials!")
     
     html = f"""
-    <!DOCTYPE html><html><head>{CSS}<title>Admin Access</title></head>
-    <body class="bg-black flex items-center justify-center min-h-screen p-4">
+    <!DOCTYPE html><html><head>{CSS}<title>Admin Login</title></head>
+    <body class="bg-black flex items-center justify-center min-h-screen">
         <form method="POST" class="glass p-10 rounded-[2.5rem] w-full max-w-md space-y-6 border-t-4 border-blue-500 shadow-2xl">
             <h2 class="text-3xl font-black text-center text-blue-500 uppercase italic tracking-tighter">ADMIN WP LOGIN</h2>
             {{% with messages = get_flashed_messages() %}}{{% if messages %}}<p class="text-red-500 text-xs text-center font-bold">{{{{messages[0]}}}}</p>{{% endif %}}{{% endwith %}}
-            <input type="text" name="user" placeholder="Username" required>
-            <input type="password" name="pass" placeholder="Password" required>
-            <button class="bg-blue-600 w-full py-4 rounded-2xl font-bold text-white uppercase shadow-xl">LOG IN</button>
+            <input type="text" name="user" placeholder="Admin Username" required>
+            <input type="password" name="pass" placeholder="Admin Password" required>
+            <button class="bg-blue-600 w-full py-4 rounded-2xl font-bold text-white uppercase">Access Panel</button>
         </form>
     </body></html>
     """
@@ -448,9 +431,8 @@ def admin_dash():
     search = request.args.get('search', '')
     query = {"name": {"$regex": search, "$options": "i"}} if search else {}
     movies = list(movies_col.find(query).sort("_id", -1))
-    
     html = f"""
-    <!DOCTYPE html><html><head>{CSS}<title>Admin Dash</title></head>
+    <!DOCTYPE html><html><head>{CSS}<title>Admin Dashboard</title></head>
     <body class="flex flex-col md:flex-row min-h-screen">
         <div class="w-full md:w-72 bg-[#080c14] border-r border-slate-900 p-8 flex flex-col shadow-2xl h-full sticky top-0">
             <h2 class="text-2xl font-black text-blue-500 uppercase italic mb-10">ADMIN WP</h2>
@@ -459,14 +441,14 @@ def admin_dash():
                 <a href="/admin/wp/requests" class="sidebar-link"><i class="fa fa-paper-plane"></i> User Requests</a>
                 <a href="/admin/wp/add" class="sidebar-link"><i class="fa fa-plus-circle"></i> Add Movie</a>
                 <a href="/admin/wp/settings" class="sidebar-link"><i class="fa fa-cog"></i> Settings</a>
-                <a href="/logout" class="sidebar-link text-red-500 mt-20"><i class="fa fa-sign-out-alt"></i> Logout System</a>
+                <a href="/logout" class="sidebar-link text-red-500 mt-20">Logout</a>
             </nav>
         </div>
         <main class="flex-grow p-6 md:p-12">
             <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                <h1 class="text-3xl font-black uppercase tracking-tighter">Library (WP)</h1>
-                <form action="/admin/wp" method="GET" class="flex bg-slate-900 rounded-2xl px-5 py-2 border border-slate-800 w-full md:w-96 shadow-lg">
-                    <input type="text" name="search" placeholder="Search..." class="bg-transparent border-none p-1 text-sm" value="{search}">
+                <h1 class="text-3xl font-black uppercase italic">Library (WP)</h1>
+                <form action="/admin/wp" method="GET" class="flex bg-slate-900 rounded-2xl px-5 border border-slate-800">
+                    <input type="text" name="search" placeholder="Search..." class="bg-transparent border-none p-2 text-sm" value="{search}">
                     <button type="submit" class="text-slate-500"><i class="fa fa-search"></i></button>
                 </form>
             </div>
@@ -478,16 +460,11 @@ def admin_dash():
                     <tbody class="divide-y divide-slate-800">
                         {{% for m in movies %}}
                         <tr class="hover:bg-slate-800/50">
-                            <td class="p-6 flex items-center gap-4">
-                                <img src="{{{{ m.poster }}}}" class="w-10 h-14 rounded-lg object-cover">
-                                <span class="font-bold text-sm">{{{{ m.name }}}}</span>
-                            </td>
+                            <td class="p-6 flex items-center gap-4"><img src="{{{{ m.poster }}}}" class="w-10 h-14 rounded-lg object-cover font-bold">{{{{ m.name }}}}</td>
                             <td class="p-6 text-xs text-blue-400 font-bold uppercase tracking-widest">{{{{ m.category }}}}</td>
-                            <td class="p-6">
-                                <div class="flex justify-center gap-4">
-                                    <a href="/admin/wp/edit/{{{{ m._id }}}}" class="text-blue-500"><i class="fa fa-edit"></i></a>
-                                    <a href="/admin/wp/delete/{{{{ m._id }}}}" class="text-red-500" onclick="return confirm('Delete?')"><i class="fa fa-trash"></i></a>
-                                </div>
+                            <td class="p-6 text-center">
+                                <a href="/admin/wp/edit/{{{{ m._id }}}}" class="text-blue-500 mr-4"><i class="fa fa-edit text-xl"></i></a>
+                                <a href="/admin/wp/delete/{{{{ m._id }}}}" class="text-red-500" onclick="return confirm('Delete?')"><i class="fa fa-trash text-xl"></i></a>
                             </td>
                         </tr>
                         {{% endfor %}}
@@ -511,26 +488,22 @@ def add_movie():
             "badge": request.form.get('badge'), "category": request.form.get('category'), "links": links
         })
         return redirect('/admin/wp')
-    
     html = f"""
-    <!DOCTYPE html><html><head>{CSS}<title>Publish</title></head>
+    <!DOCTYPE html><html><head>{CSS}<title>Add Movie</title></head>
     <body class="flex flex-col md:flex-row min-h-screen">
-        <div class="w-full md:w-72 bg-[#080c14] border-r border-slate-900 p-8 flex flex-col shadow-2xl h-full sticky top-0">
-            <h2 class="text-2xl font-black text-blue-500 mb-10 italic">ADMIN WP</h2>
-            <nav class="space-y-2"><a href="/admin/wp" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a></nav>
-        </div>
+        <div class="w-full md:w-72 bg-[#080c14] border-r border-slate-900 p-8"><h2 class="text-2xl font-black text-blue-500 mb-10 italic">ADMIN WP</h2><nav class="space-y-2"><a href="/admin/wp" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a></nav></div>
         <main class="flex-grow p-6 md:p-12">
             <div class="max-w-4xl glass p-10 rounded-[3rem] shadow-2xl mx-auto border-t-4 border-blue-600">
-                <h2 class="text-3xl font-black mb-10 text-blue-500 uppercase italic tracking-tighter">Add Movie (WP)</h2>
+                <h2 class="text-3xl font-black mb-10 text-blue-500 uppercase italic tracking-tighter">Publish Movie</h2>
                 <form method="POST" class="space-y-6">
                     <input type="text" name="name" required placeholder="Movie Name">
                     <select name="category" required>
                         {{% for c in cats %}}<option value="{{{{ c.name }}}}">{{{{ c.name }}}}</option>{{% endfor %}}
                     </select>
-                    <input type="text" name="poster" required placeholder="Poster Image URL">
+                    <input type="text" name="poster" required placeholder="Poster URL">
                     <input type="text" name="badge" placeholder="Badge Info">
-                    <div id="btn-box" class="space-y-4"></div>
-                    <button type="button" onclick="addL()" class="text-blue-400 font-bold text-xs uppercase underline">+ Add Link</button>
+                    <div id="btn-box" class="space-y-4 pt-6 border-t border-slate-800"></div>
+                    <button type="button" onclick="addL()" class="text-blue-400 font-bold text-xs uppercase underline">+ Add Button Link</button>
                     <button class="bg-blue-600 w-full py-4 rounded-2xl font-black text-white uppercase shadow-xl mt-6">Publish Now</button>
                 </form>
             </div>
@@ -558,32 +531,27 @@ def admin_requests():
         if req:
             notif_col.insert_one({
                 "user_id": req['user_id'],
-                "message": f"Update on '{req['movie_name']}': It has been {status}. Admin Message: {admin_note}",
+                "message": f"Update on '{req['movie_name']}': {status}. Note: {admin_note}",
                 "date": datetime.now().strftime("%d %b, %H:%M")
             })
             if status == "Uploaded/Done": requests_col.delete_one({"_id": ObjectId(req_id)})
             else: requests_col.update_one({"_id": ObjectId(req_id)}, {"$set": {"status": status}})
         return redirect('/admin/wp/requests')
-
     reqs = list(requests_col.find().sort("_id", -1))
     html = f"""
-    <!DOCTYPE html><html><head>{CSS}<title>User Requests</title></head>
+    <!DOCTYPE html><html><head>{CSS}<title>Requests</title></head>
     <body class="flex flex-col md:flex-row min-h-screen">
-        <div class="w-full md:w-72 bg-[#080c14] border-r border-slate-900 p-8 flex flex-col shadow-2xl h-full sticky top-0"><h2 class="text-2xl font-black text-blue-500 mb-10 italic">ADMIN WP</h2><nav class="space-y-2"><a href="/admin/wp" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a></nav></div>
-        <main class="flex-grow p-6 md:p-12">
-            <h1 class="text-3xl font-black mb-12 uppercase italic tracking-tighter">Requests Queue (WP)</h1>
+        <div class="w-full md:w-72 bg-[#080c14] border-r border-slate-900 p-8"><h2 class="text-2xl font-black text-blue-500 mb-10 italic uppercase">ADMIN WP</h2><nav class="space-y-2"><a href="/admin/wp" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a></nav></div>
+        <main class="flex-grow p-12">
+            <h1 class="text-3xl font-black mb-12 uppercase italic">Requests Queue</h1>
             {{% for r in reqs %}}
             <div class="glass p-8 rounded-[2.5rem] flex flex-col md:flex-row justify-between items-center gap-8 mb-6 shadow-xl">
-                <div class="flex-1">
-                    <h3 class="text-2xl font-black text-blue-500 uppercase italic">{{{{ r.movie_name }}}}</h3>
-                    <p class="text-xs text-slate-400 font-bold uppercase">{{{{ r.user_name }}}} | {{{{ r.email }}}}</p>
-                    <span class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">{{{{ r.status }}}} | {{{{ r.date }}}}</span>
-                </div>
-                <form method="POST" class="flex flex-col md:flex-row gap-2">
+                <div class="flex-1"><h3 class="text-2xl font-black text-blue-500 uppercase italic">{{{{ r.movie_name }}}}</h3><p class="text-xs text-slate-400">{{{{ r.user_name }}}}</p></div>
+                <form method="POST" class="flex gap-2">
                     <input type="hidden" name="req_id" value="{{{{ r._id }}}}">
-                    <input type="text" name="admin_note" placeholder="Message to user..." required class="text-xs">
+                    <input type="text" name="admin_note" placeholder="Admin Message" required class="text-xs">
                     <select name="status" class="text-xs"><option>Uploaded/Done</option><option>Rejected</option></select>
-                    <button class="bg-blue-600 px-6 py-2 rounded-xl font-bold uppercase text-xs shadow-xl">Update</button>
+                    <button class="bg-blue-600 px-6 py-2 rounded-xl text-xs shadow-xl">Update</button>
                 </form>
             </div>
             {{% endfor %}}
@@ -597,7 +565,6 @@ def admin_settings():
     if not session.get('admin'): return redirect('/admin/wp/login')
     conf = get_config()
     cats = list(categories_col.find())
-    
     if request.method == 'POST':
         if 'update_branding' in request.form:
             settings_col.update_one({"type": "config"}, {"$set": {
@@ -607,55 +574,52 @@ def admin_settings():
             }})
         elif 'update_profile' in request.form:
             settings_col.update_one({"type": "config"}, {"$set": {
-                "admin_user": request.form.get('admin_user'), "admin_pass": request.form.get('admin_pass')
+                "admin_user": request.form.get('admin_user').strip(), "admin_pass": request.form.get('admin_pass').strip()
             }})
-        elif 'add_cat' in request.form:
-            categories_col.insert_one({"name": request.form.get('cat_name')})
-        elif 'del_cat' in request.form:
-            categories_col.delete_one({"_id": ObjectId(request.form.get('cat_id'))})
+        elif 'add_cat' in request.form: categories_col.insert_one({"name": request.form.get('cat_name')})
+        elif 'del_cat' in request.form: categories_col.delete_one({"_id": ObjectId(request.form.get('cat_id'))})
         elif 'update_ads' in request.form:
             ads = {k: request.form.get(k) for k in conf['ads'].keys()}
             settings_col.update_one({"type": "config"}, {"$set": {"ads": ads}})
-        flash("System Configuration Updated!")
+        flash("Config Updated!")
         return redirect('/admin/wp/settings')
-
     html = f"""
     <!DOCTYPE html><html><head>{CSS}<title>Settings</title></head>
     <body class="flex flex-col md:flex-row min-h-screen">
-        <div class="w-full md:w-72 bg-[#080c14] border-r border-slate-900 p-8 flex flex-col shadow-2xl h-full sticky top-0"><h2 class="text-2xl font-black text-blue-500 mb-10 italic uppercase">WP ADMIN</h2><nav class="space-y-2"><a href="/admin/wp" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a><a href="/admin/wp/settings" class="sidebar-link active"><i class="fa fa-cog"></i> Settings</a></nav></div>
-        <main class="flex-grow p-6 md:p-12 space-y-10">
-            <h1 class="text-4xl font-black uppercase tracking-tighter italic">WP Configuration</h1>
+        <div class="w-full md:w-72 bg-[#080c14] border-r border-slate-900 p-8"><h2 class="text-2xl font-black text-blue-500 mb-10 italic">ADMIN WP</h2><nav class="space-y-2"><a href="/admin/wp" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a><a href="/admin/wp/settings" class="sidebar-link active"><i class="fa fa-cog"></i> Settings</a></nav></div>
+        <main class="flex-grow p-12 space-y-10">
+            <h1 class="text-4xl font-black uppercase italic tracking-tighter">System Configuration</h1>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 <form method="POST" class="glass p-8 rounded-[3rem] space-y-4 shadow-2xl border-t-4 border-blue-600">
-                    <h3 class="text-blue-500 font-black uppercase text-xs">Branding & Social</h3>
-                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Site Name</label><input type="text" name="site_name" value="{{{{conf.site_name}}}}"></div>
-                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Logo URL</label><input type="text" name="logo_url" value="{{{{conf.logo_url}}}}"></div>
-                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Help Text</label><textarea name="help_text" rows="3">{{{{conf.help_text}}}}</textarea></div>
-                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Slider Limit</label><input type="number" name="slider_limit" value="{{{{conf.slider_limit}}}}"></div>
-                    <button name="update_branding" class="bg-blue-600 w-full py-4 rounded-2xl font-bold uppercase tracking-widest mt-4 shadow-xl">Update Identity</button>
+                    <h3 class="text-blue-500 font-black uppercase text-xs tracking-widest border-b pb-3 border-slate-800">Branding</h3>
+                    <input type="text" name="site_name" value="{{{{conf.site_name}}}}" placeholder="Site Name">
+                    <input type="text" name="logo_url" value="{{{{conf.logo_url}}}}" placeholder="Logo URL">
+                    <textarea name="help_text" rows="3">{{{{conf.help_text}}}}</textarea>
+                    <input type="number" name="slider_limit" value="{{{{conf.slider_limit}}}}">
+                    <button name="update_branding" class="bg-blue-600 w-full py-4 rounded-2xl font-bold uppercase shadow-xl mt-4">Save Identity</button>
                 </form>
                 <div class="space-y-10">
                     <div class="glass p-8 rounded-[3rem] shadow-2xl border-t-4 border-green-600">
                         <h3 class="text-green-500 font-black uppercase text-xs mb-4">Genre Manager</h3>
-                        <form method="POST" class="flex gap-2"><input type="text" name="cat_name" placeholder="Genre Name" required><button name="add_cat" class="bg-green-600 px-6 rounded-xl font-bold text-white shadow-lg">ADD</button></form>
+                        <form method="POST" class="flex gap-2"><input type="text" name="cat_name" placeholder="Genre" required><button name="add_cat" class="bg-green-600 px-6 rounded-xl font-bold">ADD</button></form>
                         <div class="mt-4 flex flex-wrap gap-2">
                             {{% for c in cats %}}<div class="glass px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-4">{{{{c.name}}}}<form method="POST" class="inline"><input type="hidden" name="cat_id" value="{{{{c._id}}}}"><button name="del_cat" class="text-red-500"><i class="fa fa-trash"></i></button></form></div>{{% endfor %}}
                         </div>
                     </div>
                     <form method="POST" class="glass p-8 rounded-[3rem] space-y-4 shadow-2xl border-t-4 border-red-600">
-                        <h3 class="text-red-500 font-black uppercase text-xs">Security (WP Access)</h3>
-                        <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Username</label><input type="text" name="admin_user" value="{{{{conf.admin_user}}}}"></div>
-                        <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Password</label><input type="text" name="admin_pass" value="{{{{conf.admin_pass}}}}"></div>
-                        <button name="update_profile" class="bg-red-600 w-full py-4 rounded-xl font-bold uppercase tracking-widest text-xs shadow-xl">Update Access</button>
+                        <h3 class="text-red-500 font-black uppercase text-xs">WP Access Credentials</h3>
+                        <input type="text" name="admin_user" value="{{{{conf.admin_user}}}}">
+                        <input type="text" name="admin_pass" value="{{{{conf.admin_pass}}}}">
+                        <button name="update_profile" class="bg-red-600 w-full py-4 rounded-xl font-bold uppercase shadow-xl">Update WP Creds</button>
                     </form>
                 </div>
             </div>
             <form method="POST" class="glass p-10 rounded-[3.5rem] shadow-2xl border-t-4 border-yellow-500 space-y-8">
-                <h3 class="text-yellow-500 font-black uppercase text-xs italic tracking-widest flex items-center gap-2"><i class="fa fa-code text-xl"></i> AD SYSTEM (WP)</h3>
+                <h3 class="text-yellow-500 font-black uppercase text-xs italic tracking-widest flex items-center gap-2"><i class="fa fa-code"></i> MONETIZATION SYSTEM</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {{% for k, v in conf.ads.items() %}}<div class="space-y-2"><label class="text-[11px] uppercase font-bold text-slate-500 tracking-widest">{{{{k | upper}}}} SLOT</label><textarea name="{{{{k}}}}" rows="4">{{{{v}}}}</textarea></div>{{% endfor %}}
+                    {{% for k, v in conf.ads.items() %}}<div class="space-y-2"><label class="text-[11px] uppercase font-bold text-slate-500 tracking-widest">{{{{k | upper}}}} SLOT</label><textarea name="{{{{k}}}}" rows="4" placeholder="Ad code here...">{{{{v}}}}</textarea></div>{{% endfor %}}
                 </div>
-                <button name="update_ads" class="bg-yellow-600 w-full py-5 rounded-[2rem] font-black uppercase text-xl shadow-2xl tracking-tighter">Update WP Ad Scripts</button>
+                <button name="update_ads" class="bg-yellow-600 w-full py-5 rounded-[2rem] font-black uppercase text-xl shadow-2xl">Update Ad Scripts</button>
             </form>
         </main>
     </body></html>
@@ -675,11 +639,10 @@ def edit_movie(id):
             "badge": request.form.get('badge'), "category": request.form.get('category'), "links": links
         }})
         return redirect('/admin/wp')
-    
     html = f"""
-    <!DOCTYPE html><html><head>{CSS}<title>Edit Entry (WP)</title></head><body class="p-10">
+    <!DOCTYPE html><html><head>{CSS}<title>Edit Movie</title></head><body class="p-10">
     <div class="max-w-4xl glass p-10 rounded-[3rem] mx-auto shadow-2xl border-t-4 border-blue-600">
-        <h2 class="text-2xl font-black mb-8 uppercase italic tracking-tighter">Edit Movie Entry (WP)</h2>
+        <h2 class="text-2xl font-black mb-8 uppercase italic tracking-tighter">Edit Entry (WP)</h2>
         <form method="POST" class="space-y-6">
             <input type="text" name="name" value="{{{{movie.name}}}}" required>
             <input type="text" name="poster" value="{{{{movie.poster}}}}" required>
@@ -690,8 +653,8 @@ def edit_movie(id):
             <div id="ec" class="space-y-3 pt-6 border-t border-slate-800">
                 {{% for l in movie.links %}}<div class="flex gap-3"><input name="l_name[]" value="{{{{l.label}}}}"><input name="l_url[]" value="{{{{l.url}}}}"></div>{{% endfor %}}
             </div>
-            <button class="bg-blue-600 w-full py-4 rounded-xl font-bold uppercase shadow-xl mt-6">Update Entry</button>
-            <a href="/admin/wp" class="block text-center mt-4 text-slate-500 font-bold text-xs uppercase underline">Back to Library</a>
+            <button class="bg-blue-600 w-full py-4 rounded-xl font-bold uppercase shadow-xl mt-6">Update Now</button>
+            <a href="/admin/wp" class="block text-center mt-4 text-slate-500 font-bold text-xs uppercase underline tracking-widest">Discard and Back</a>
         </form>
     </div>
     </body></html>
@@ -705,8 +668,7 @@ def delete_movie(id):
     return redirect('/admin/wp')
 
 @app.errorhandler(404)
-def page_not_found(e):
-    return redirect('/')
+def page_not_found(e): return redirect('/')
 
 if __name__ == '__main__':
     app.run(debug=True, port=int(os.environ.get("PORT", 5000)))
