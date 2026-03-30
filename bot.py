@@ -935,7 +935,10 @@ def edit_movie(id):
 
             <!-- Multi Link Section Edit Start -->
             <div class="mt-6 p-4 border border-blue-500/20 bg-blue-500/5 rounded-2xl">
-                <h4 class="text-blue-500 font-black uppercase text-[10px] mb-2 tracking-widest">Multi Link Adder (Bulk)</h4>
+                <div class="flex justify-between items-center mb-2">
+                    <h4 class="text-blue-500 font-black uppercase text-[10px] tracking-widest">Multi Link Adder (Bulk)</h4>
+                    <button type="button" onclick="loadToTextarea()" class="text-[10px] text-slate-400 hover:text-blue-400 font-bold uppercase transition">Sync Links to Area</button>
+                </div>
                 <textarea id="multi-link-area" rows="4" class="text-xs" placeholder="Format: Label - URL (one per line)&#10;Download 1080p - https://t.me/link1"></textarea>
                 <button type="button" onclick="processMultiLinks()" class="mt-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase hover:bg-blue-600 hover:text-white transition">Process Multi Links</button>
             </div>
@@ -953,8 +956,8 @@ def edit_movie(id):
             const d = document.createElement('div');
             d.className = "flex gap-3 p-2 glass rounded-xl border border-white/5 mt-2 relative group";
             d.innerHTML = `
-                <input type="text" name="l_name[]" placeholder="Button Label" required class="text-sm w-full" value="${{label}}">
-                <input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm w-full" value="${{url}}">
+                <input type="text" name="l_name[]" placeholder="Button Label" required class="text-sm w-full l-name-field" value="${{label}}">
+                <input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm w-full l-url-field" value="${{url}}">
                 <button type="button" onclick="this.parentElement.remove()" class="text-red-500 p-2"><i class="fa fa-times"></i></button>
             `;
             b.appendChild(d);
@@ -973,6 +976,25 @@ def edit_movie(id):
             }});
             area.value = '';
         }}
+
+        // নিউ ফিচার: বর্তমান বক্সের লিংকগুলোকে টেক্সট এরিয়াতে লোড করার জন্য (এডিটিং সহজ করতে)
+        function loadToTextarea() {{
+            const names = document.querySelectorAll('.l-name-field');
+            const urls = document.querySelectorAll('.l-url-field');
+            let content = "";
+            for(let i=0; i<names.length; i++){{
+                if(names[i].value && urls[i].value){{
+                    content += names[i].value + " - " + urls[i].value + "\\n";
+                }}
+            }}
+            document.getElementById('multi-link-area').value = content.trim();
+            // চাইলে নিচের লাইনের কমেন্ট সরিয়ে বক্সগুলো ডিলিট করে দিতে পারেন যদি ফ্রেশ এড করতে চান
+            // document.getElementById('btn-box').innerHTML = '<h4 class="text-blue-500 font-black uppercase text-xs tracking-widest mb-4">Manage Links</h4>';
+        }}
+        
+        // বিদ্যমান ইনপুটগুলোতে ক্লাস যোগ করার জন্য
+        document.querySelectorAll('input[name="l_name[]"]').forEach(el => el.classList.add('l-name-field'));
+        document.querySelectorAll('input[name="l_url[]"]').forEach(el => el.classList.add('l-url-field'));
     </script>
     </body></html>
     """
