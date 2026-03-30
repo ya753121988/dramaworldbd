@@ -52,6 +52,14 @@ def get_config():
             else: conf[key] = "Not Set"
     return conf
 
+# --- Helper Function for Image Processing (Updated for both Poster & Thumbnail) ---
+def process_media(req, file_key, url_key):
+    file = req.files.get(file_key)
+    if file and file.filename != '':
+        encoded_string = base64.b64encode(file.read()).decode('utf-8')
+        return f"data:{file.content_type};base64,{encoded_string}"
+    return req.form.get(url_key)
+
 # --- Global CSS & Responsive Meta ---
 CSS = """
 <meta charset="UTF-8">
@@ -64,6 +72,12 @@ CSS = """
     .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.05); }
     .movie-card { transition: 0.4s; border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; overflow: hidden; background: #0f172a; position: relative; }
     .movie-card:hover { transform: translateY(-10px); border-color: #3b82f6; box-shadow: 0 20px 40px -15px rgba(59, 130, 246, 0.5); }
+    
+    /* Poster Fix: Showing full image */
+    .full-poster { width: 100%; height: auto; object-fit: contain; border-radius: 2rem; }
+    .card-thumb { width: 100%; height: 260px; object-fit: cover; }
+    @media(min-width: 768px) { .card-thumb { height: 320px; } }
+
     .slider-box { position: relative; width: 100%; height: 230px; overflow: hidden; border-radius: 30px; border: 1px solid rgba(59, 130, 246, 0.2); }
     @media(min-width: 768px) { .slider-box { height: 480px; } }
     .slide-img { display: none; width: 100%; height: 100%; object-fit: cover; animation: fade 1.5s ease; }
@@ -81,17 +95,6 @@ CSS = """
     .btn-premium:hover { transform: scale(1.02); opacity: 0.9; }
 </style>
 """
-
-# --- Helper Function for Image Processing ---
-def process_poster(req):
-    # Check if file was uploaded
-    file = req.files.get('poster_file')
-    if file and file.filename != '':
-        # Read file and encode to base64
-        encoded_string = base64.b64encode(file.read()).decode('utf-8')
-        return f"data:{file.content_type};base64,{encoded_string}"
-    # If no file, use the URL field
-    return req.form.get('poster')
 
 # --- UTILITY: USER NAV ---
 def get_navbar(conf):
@@ -200,7 +203,7 @@ def index():
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
                     {{% for m in ms %}}
                     <div class="movie-card cursor-pointer" onclick="location.href='/movie/{{{{ m._id }}}}'">
-                        <img src="{{{{ m.poster }}}}" class="w-full h-64 md:h-80 object-cover">
+                        <img src="{{{{ m.thumbnail if m.thumbnail else m.poster }}}}" class="card-thumb">
                         <div class="absolute top-3 left-3 bg-blue-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase border border-white/20">{{{{ m.badge }}}}</div>
                         <div class="p-4 bg-slate-900/90 backdrop-blur-md"><h3 class="font-bold text-sm truncate uppercase italic tracking-tighter">{{{{ m.name }}}}</h3></div>
                     </div>
@@ -241,7 +244,9 @@ def movie_details(id):
     {get_navbar(conf)}
     <div class="container mx-auto px-4 py-10">
         <div class="flex flex-col md:flex-row gap-10">
-            <div class="w-full md:w-80"><img src="{{{{ movie.poster }}}}" class="w-full rounded-[2.5rem] shadow-2xl border-4 border-slate-900"></div>
+            <div class="w-full md:w-[450px]">
+                <img src="{{{{ movie.poster }}}}" class="full-poster shadow-2xl border-4 border-slate-900">
+            </div>
             <div class="flex-1">
                 <span class="bg-blue-600 px-5 py-1 rounded-full text-xs font-bold uppercase shadow-lg">{{{{ movie.badge }}}}</span>
                 <h1 class="text-4xl md:text-5xl font-black mt-4 mb-2 italic tracking-tighter uppercase leading-tight">{{{{ movie.name }}}}</h1>
@@ -268,6 +273,7 @@ def movie_details(id):
     """
     return render_template_string(html, movie=movie, conf=conf)
 
+# --- HELP PAGE ---
 @app.route('/help')
 def help_page():
     conf = get_config()
@@ -289,7 +295,7 @@ def help_page():
     """
     return render_template_string(html, conf=conf)
 
-# --- AUTH SYSTEM (USER LOGIN / REGISTER) ---
+# --- AUTH SYSTEM ---
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -324,8 +330,6 @@ def login():
     if request.method == 'POST':
         user = request.form.get('user', '').strip()
         pw = request.form.get('pass', '').strip()
-        
-        # User Login Check
         u = users_col.find_one({"user": user, "pass": pw})
         if u:
             session.clear()
@@ -352,8 +356,6 @@ def login():
     """
     return render_template_string(html)
 
-# --- ADMIN AUTH (SEPARATE URL: /admin/wp) ---
-
 @app.route('/admin/wp', methods=['GET', 'POST'])
 def admin_login():
     conf = get_config()
@@ -362,14 +364,10 @@ def admin_login():
     if request.method == 'POST':
         user = request.form.get('user', '').strip()
         pw = request.form.get('pass', '').strip()
-        
-        # First Time Setup
         if is_setup:
             settings_col.update_one({"type": "config"}, {"$set": {"admin_user": user, "admin_pass": pw}})
             flash("Admin Credentials Set Successfully! Now Login.")
             return redirect('/admin/wp')
-
-        # Admin Login Check
         if user == conf['admin_user'] and pw == conf['admin_pass']:
             session.clear()
             session['admin'] = True
@@ -398,7 +396,7 @@ def logout():
     session.clear()
     return redirect('/')
 
-# --- USER SYSTEM: REQUESTS & MAIL ---
+# --- REQUESTS & MAIL ---
 
 @app.route('/request', methods=['GET', 'POST'])
 def request_movie():
@@ -544,7 +542,7 @@ def admin_dash():
                         {{% for m in movies %}}
                         <tr class="hover:bg-slate-800/50 transition">
                             <td class="p-6 flex items-center gap-4">
-                                <img src="{{{{ m.poster }}}}" class="w-12 h-16 rounded-xl object-cover shadow-lg border border-white/5">
+                                <img src="{{{{ m.thumbnail if m.thumbnail else m.poster }}}}" class="w-12 h-16 rounded-xl object-cover shadow-lg border border-white/5">
                                 <span class="font-bold text-sm text-slate-200">{{{{ m.name }}}}</span>
                             </td>
                             <td class="p-6 text-xs text-blue-400 font-bold uppercase tracking-widest">{{{{ m.category }}}}</td>
@@ -571,7 +569,6 @@ def admin_requests():
         req_id = request.form.get('req_id')
         status = request.form.get('status')
         admin_note = request.form.get('admin_note')
-        
         req = requests_col.find_one({"_id": ObjectId(req_id)})
         if req:
             notif_col.insert_one({
@@ -635,12 +632,18 @@ def add_movie():
     if not session.get('admin'): return redirect('/admin/wp')
     cats = list(categories_col.find())
     if request.method == 'POST':
-        poster_val = process_poster(request)
+        poster_val = process_media(request, 'poster_file', 'poster')
+        thumb_val = process_media(request, 'thumb_file', 'thumbnail')
+        
         labels, urls = request.form.getlist('l_name[]'), request.form.getlist('l_url[]')
         links = [{"label": labels[i], "url": urls[i]} for i in range(len(labels))]
         movies_col.insert_one({
-            "name": request.form.get('name'), "poster": poster_val,
-            "badge": request.form.get('badge'), "category": request.form.get('category'), "links": links
+            "name": request.form.get('name'), 
+            "poster": poster_val,
+            "thumbnail": thumb_val,
+            "badge": request.form.get('badge'), 
+            "category": request.form.get('category'), 
+            "links": links
         })
         return redirect('/admin')
     
@@ -658,7 +661,7 @@ def add_movie():
         </div>
         <main class="flex-grow p-6 md:p-12">
             <div class="max-w-4xl glass p-10 rounded-[3rem] shadow-2xl mx-auto border-t-4 border-blue-600">
-                <h2 class="text-3xl font-black mb-10 text-blue-500 uppercase italic italic tracking-tighter">Publish New Movie</h2>
+                <h2 class="text-3xl font-black mb-10 text-blue-500 uppercase italic tracking-tighter">Publish New Movie</h2>
                 <form method="POST" enctype="multipart/form-data" class="space-y-8">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Movie Full Name</label><input type="text" name="name" required placeholder="e.g. Kingdom S01 Dual Audio"></div>
@@ -668,11 +671,20 @@ def add_movie():
                             </select>
                         </div>
                     </div>
-                    <div class="space-y-4">
-                        <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Poster Image URL</label><input type="text" name="poster" placeholder="https://link.com/image.jpg"></div>
-                        <div class="text-center text-xs font-bold text-slate-600 italic">-- OR UPLOAD FROM GALLERY --</div>
-                        <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Choose From Device</label><input type="file" name="poster_file" accept="image/*" class="file:bg-blue-600 file:border-none file:px-4 file:py-1 file:rounded-lg file:text-white file:font-bold"></div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="space-y-4">
+                            <h4 class="text-xs font-bold text-blue-500 uppercase">1. MOVIE POSTER (Vertical)</h4>
+                            <input type="text" name="poster" placeholder="Poster URL">
+                            <input type="file" name="poster_file" accept="image/*" class="text-xs">
+                        </div>
+                        <div class="space-y-4">
+                            <h4 class="text-xs font-bold text-green-500 uppercase">2. THUMBNAIL (Card View)</h4>
+                            <input type="text" name="thumbnail" placeholder="Thumbnail URL">
+                            <input type="file" name="thumb_file" accept="image/*" class="text-xs">
+                        </div>
                     </div>
+
                     <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Badge Info</label><input type="text" name="badge" placeholder="e.g. 1080p Dual Audio"></div>
                     
                     <div id="btn-box" class="space-y-4 pt-6 border-t border-slate-800">
@@ -808,14 +820,21 @@ def edit_movie(id):
     movie = movies_col.find_one({"_id": ObjectId(id)})
     cats = list(categories_col.find())
     if request.method == 'POST':
-        poster_val = process_poster(request)
-        if not poster_val: poster_val = movie.get('poster') # Keep old if nothing new
+        poster_val = process_media(request, 'poster_file', 'poster')
+        thumb_val = process_media(request, 'thumb_file', 'thumbnail')
+        
+        if not poster_val: poster_val = movie.get('poster')
+        if not thumb_val: thumb_val = movie.get('thumbnail')
 
         labels, urls = request.form.getlist('l_name[]'), request.form.getlist('l_url[]')
         links = [{"label": labels[i], "url": urls[i]} for i in range(len(labels))]
         movies_col.update_one({"_id": ObjectId(id)}, {"$set": {
-            "name": request.form.get('name'), "poster": poster_val,
-            "badge": request.form.get('badge'), "category": request.form.get('category'), "links": links
+            "name": request.form.get('name'), 
+            "poster": poster_val,
+            "thumbnail": thumb_val,
+            "badge": request.form.get('badge'), 
+            "category": request.form.get('category'), 
+            "links": links
         }})
         return redirect('/admin')
     
@@ -829,15 +848,16 @@ def edit_movie(id):
                 <input type="text" name="name" value="{{{{movie.name}}}}" required>
             </div>
             
-            <div class="space-y-4 border-y border-slate-800 py-4">
-                <div class="space-y-1">
-                    <label class="text-xs font-bold text-slate-500 uppercase px-1">Poster URL (Leave empty if uploading file)</label>
-                    <input type="text" name="poster" value="{{{{movie.poster if movie.poster.startswith('http') else ''}}}}">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 border-y border-slate-800 py-6">
+                <div class="space-y-4">
+                    <h4 class="text-xs font-bold text-blue-500">POSTER (Vertical)</h4>
+                    <input type="text" name="poster" placeholder="URL" value="{{{{movie.poster if movie.poster.startswith('http') else ''}}}}">
+                    <input type="file" name="poster_file" accept="image/*" class="text-xs">
                 </div>
-                <div class="text-center text-xs font-bold text-slate-600 italic">-- OR UPLOAD NEW POSTER --</div>
-                <div class="space-y-1">
-                    <label class="text-xs font-bold text-slate-500 uppercase px-1">Choose From Device</label>
-                    <input type="file" name="poster_file" accept="image/*" class="file:bg-blue-600 file:border-none file:px-4 file:py-1 file:rounded-lg file:text-white file:font-bold">
+                <div class="space-y-4">
+                    <h4 class="text-xs font-bold text-green-500">THUMBNAIL (Card View)</h4>
+                    <input type="text" name="thumbnail" placeholder="URL" value="{{{{movie.thumbnail if movie.thumbnail and movie.thumbnail.startswith('http') else ''}}}}">
+                    <input type="file" name="thumb_file" accept="image/*" class="text-xs">
                 </div>
             </div>
 
