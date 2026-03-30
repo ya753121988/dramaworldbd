@@ -1,4 +1,5 @@
 import os
+import base64
 from flask import Flask, render_template_string, request, redirect, url_for, session, flash
 from pymongo import MongoClient
 from bson.objectid import ObjectId
@@ -80,6 +81,17 @@ CSS = """
     .btn-premium:hover { transform: scale(1.02); opacity: 0.9; }
 </style>
 """
+
+# --- Helper Function for Image Processing ---
+def process_poster(req):
+    # Check if file was uploaded
+    file = req.files.get('poster_file')
+    if file and file.filename != '':
+        # Read file and encode to base64
+        encoded_string = base64.b64encode(file.read()).decode('utf-8')
+        return f"data:{file.content_type};base64,{encoded_string}"
+    # If no file, use the URL field
+    return req.form.get('poster')
 
 # --- UTILITY: USER NAV ---
 def get_navbar(conf):
@@ -623,10 +635,11 @@ def add_movie():
     if not session.get('admin'): return redirect('/admin/wp')
     cats = list(categories_col.find())
     if request.method == 'POST':
+        poster_val = process_poster(request)
         labels, urls = request.form.getlist('l_name[]'), request.form.getlist('l_url[]')
         links = [{"label": labels[i], "url": urls[i]} for i in range(len(labels))]
         movies_col.insert_one({
-            "name": request.form.get('name'), "poster": request.form.get('poster'),
+            "name": request.form.get('name'), "poster": poster_val,
             "badge": request.form.get('badge'), "category": request.form.get('category'), "links": links
         })
         return redirect('/admin')
@@ -646,7 +659,7 @@ def add_movie():
         <main class="flex-grow p-6 md:p-12">
             <div class="max-w-4xl glass p-10 rounded-[3rem] shadow-2xl mx-auto border-t-4 border-blue-600">
                 <h2 class="text-3xl font-black mb-10 text-blue-500 uppercase italic italic tracking-tighter">Publish New Movie</h2>
-                <form method="POST" class="space-y-8">
+                <form method="POST" enctype="multipart/form-data" class="space-y-8">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Movie Full Name</label><input type="text" name="name" required placeholder="e.g. Kingdom S01 Dual Audio"></div>
                         <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Select Category</label>
@@ -655,7 +668,11 @@ def add_movie():
                             </select>
                         </div>
                     </div>
-                    <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Poster Image URL</label><input type="text" name="poster" required placeholder="https://link.com/image.jpg"></div>
+                    <div class="space-y-4">
+                        <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Poster Image URL</label><input type="text" name="poster" placeholder="https://link.com/image.jpg"></div>
+                        <div class="text-center text-xs font-bold text-slate-600 italic">-- OR UPLOAD FROM GALLERY --</div>
+                        <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Choose From Device</label><input type="file" name="poster_file" accept="image/*" class="file:bg-blue-600 file:border-none file:px-4 file:py-1 file:rounded-lg file:text-white file:font-bold"></div>
+                    </div>
                     <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Badge Info</label><input type="text" name="badge" placeholder="e.g. 1080p Dual Audio"></div>
                     
                     <div id="btn-box" class="space-y-4 pt-6 border-t border-slate-800">
@@ -791,10 +808,13 @@ def edit_movie(id):
     movie = movies_col.find_one({"_id": ObjectId(id)})
     cats = list(categories_col.find())
     if request.method == 'POST':
+        poster_val = process_poster(request)
+        if not poster_val: poster_val = movie.get('poster') # Keep old if nothing new
+
         labels, urls = request.form.getlist('l_name[]'), request.form.getlist('l_url[]')
         links = [{"label": labels[i], "url": urls[i]} for i in range(len(labels))]
         movies_col.update_one({"_id": ObjectId(id)}, {"$set": {
-            "name": request.form.get('name'), "poster": request.form.get('poster'),
+            "name": request.form.get('name'), "poster": poster_val,
             "badge": request.form.get('badge'), "category": request.form.get('category'), "links": links
         }})
         return redirect('/admin')
@@ -803,22 +823,57 @@ def edit_movie(id):
     <!DOCTYPE html><html><head>{CSS}<title>Edit - {{{{movie.name}}}}</title></head><body class="p-10">
     <div class="max-w-4xl glass p-10 rounded-[3rem] mx-auto shadow-2xl border-t-4 border-blue-600">
         <h2 class="text-2xl font-black mb-8 uppercase italic">Edit Movie Entry</h2>
-        <form method="POST" class="space-y-6">
-            <input type="text" name="name" value="{{{{movie.name}}}}" required>
-            <input type="text" name="poster" value="{{{{movie.poster}}}}" required>
-            <input type="text" name="badge" value="{{{{movie.badge}}}}">
-            <select name="category">
-                {{% for c in cats %}}<option value="{{{{c.name}}}}" {{% if c.name == movie.category %}}selected{{% endif %}}>{{{{c.name}}}}</option>{{% endfor %}}
-            </select>
-            <div id="ec" class="space-y-3 pt-6 border-t border-slate-800">
+        <form method="POST" enctype="multipart/form-data" class="space-y-6">
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-500 uppercase px-1">Movie Name</label>
+                <input type="text" name="name" value="{{{{movie.name}}}}" required>
+            </div>
+            
+            <div class="space-y-4 border-y border-slate-800 py-4">
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-500 uppercase px-1">Poster URL (Leave empty if uploading file)</label>
+                    <input type="text" name="poster" value="{{{{movie.poster if movie.poster.startswith('http') else ''}}}}">
+                </div>
+                <div class="text-center text-xs font-bold text-slate-600 italic">-- OR UPLOAD NEW POSTER --</div>
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-500 uppercase px-1">Choose From Device</label>
+                    <input type="file" name="poster_file" accept="image/*" class="file:bg-blue-600 file:border-none file:px-4 file:py-1 file:rounded-lg file:text-white file:font-bold">
+                </div>
+            </div>
+
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-500 uppercase px-1">Badge</label>
+                <input type="text" name="badge" value="{{{{movie.badge}}}}">
+            </div>
+
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-500 uppercase px-1">Category</label>
+                <select name="category">
+                    {{% for c in cats %}}<option value="{{{{c.name}}}}" {{% if c.name == movie.category %}}selected{{% endif %}}>{{{{c.name}}}}</option>{{% endfor %}}
+                </select>
+            </div>
+
+            <div id="btn-box" class="space-y-3 pt-6 border-t border-slate-800">
+                <h4 class="text-blue-500 font-black uppercase text-xs tracking-widest mb-4">Manage Links</h4>
                 {{% for l in movie.links %}}
-                <div class="flex gap-3"><input name="l_name[]" value="{{{{l.label}}}}"><input name="l_url[]" value="{{{{l.url}}}}"></div>
+                <div class="flex gap-3"><input name="l_name[]" value="{{{{l.label}}}}" placeholder="Label"><input name="l_url[]" value="{{{{l.url}}}}" placeholder="URL"></div>
                 {{% endfor %}}
             </div>
+            <button type="button" onclick="addL()" class="text-blue-400 font-bold text-xs uppercase hover:underline tracking-widest mt-2">+ Add More Link</button>
+
             <button class="bg-blue-600 w-full py-4 rounded-xl font-bold uppercase tracking-widest mt-6">Update Database</button>
             <a href="/admin" class="block text-center mt-4 text-slate-500 font-bold text-xs uppercase">Discard Changes</a>
         </form>
     </div>
+    <script>
+        function addL(){{
+            const b = document.getElementById('btn-box');
+            const d = document.createElement('div');
+            d.className = "flex gap-3 p-2 glass rounded-xl border border-white/5 mt-2";
+            d.innerHTML = `<input type="text" name="l_name[]" placeholder="Button Label" required class="text-sm w-full"><input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm w-full">`;
+            b.appendChild(d);
+        }}
+    </script>
     </body></html>
     """
     return render_template_string(html, movie=movie, cats=cats)
