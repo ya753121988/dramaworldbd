@@ -10,8 +10,9 @@ app = Flask(__name__)
 app.secret_key = "dramaworld_ultra_premium_ultimate_v15"
 
 # --- MongoDB Connection ---
+# কানেকশন হ্যাং হওয়া রোধ করতে timeout যোগ করা হয়েছে
 MONGO_URI = "mongodb+srv://freelancermaruf1735:6XaThbuVG2zOUWm4@cluster0.ywwppvf.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-client = MongoClient(MONGO_URI)
+client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client['dramaworld_db']
 
 # Collections
@@ -30,8 +31,8 @@ def get_config():
             "type": "config",
             "site_name": "DRAMA WORLD",
             "logo_url": "https://cdn-icons-png.flaticon.com/512/705/705062.png",
-            "admin_user": "", # Empty initially to trigger setup
-            "admin_pass": "", # Empty initially to trigger setup
+            "admin_user": "", 
+            "admin_pass": "", 
             "slider_limit": 5,
             "slider_height_desktop": "480px",
             "slider_height_mobile": "230px",
@@ -82,7 +83,6 @@ CSS = """
     .full-poster { width: 100%; height: auto; object-fit: contain; border-radius: 2rem; }
     .card-thumb { width: 100%; object-fit: cover; transition: opacity 0.5s; }
     
-    /* Loading Overlay */
     #global-loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(2, 4, 10, 0.8); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
     .spinner { width: 50px; height: 50px; border: 5px solid #1e293b; border-top: 5px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -95,7 +95,6 @@ CSS = """
     input, select, textarea { background: #0f172a !important; color: white !important; border: 1px solid #1e293b !important; border-radius: 12px; padding: 12px; outline: none; width: 100%; transition: 0.3s; }
     input:focus { border-color: #3b82f6 !important; box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
     
-    /* Upload Progress UI */
     .progress-container { display: none; width: 100%; background: #0f172a; border-radius: 10px; margin-top: 10px; overflow: hidden; border: 1px solid #1e293b; }
     .progress-bar { width: 0%; height: 12px; background: linear-gradient(90deg, #3b82f6, #06b6d4); transition: width 0.2s; }
 
@@ -111,6 +110,7 @@ CSS = """
 <div id="global-loader"><div class="text-center"><div class="spinner mx-auto mb-4"></div><p class="text-blue-500 font-bold animate-pulse">LOADING...</p></div></div>
 <script>
     function showGlobalLoader() { document.getElementById('global-loader').style.display = 'flex'; }
+    window.onpageshow = function(event) { if (event.persisted) { document.getElementById('global-loader').style.display = 'none'; } };
 </script>
 """
 
@@ -179,6 +179,7 @@ def index():
         
         slider_movies = list(movies_col.find().sort("_id", -1).limit(int(conf['slider_limit'])))
 
+    # Python f-string conflict fix with double curly braces
     html_content = f"""
     <!DOCTYPE html><html><head>{CSS}
     <style>
@@ -513,10 +514,10 @@ def profile():
     <div class="container mx-auto px-4 py-10 text-center">
         <div class="glass p-12 rounded-[3.5rem] max-w-md mx-auto border-b-4 border-blue-600 shadow-2xl">
             <div class="w-24 h-24 bg-blue-600 rounded-full mx-auto flex items-center justify-center text-4xl font-black mb-6 shadow-xl border-4 border-slate-900">
-                {u['name'][0]}
+                {u['name'][0] if u else 'U'}
             </div>
-            <h2 class="text-3xl font-black mb-1 uppercase tracking-tighter italic">{u['name']}</h2>
-            <p class="text-blue-500 font-bold text-xs mb-8 uppercase tracking-widest">Member ID: {u['uid']}</p>
+            <h2 class="text-3xl font-black mb-1 uppercase tracking-tighter italic">{u['name'] if u else 'User'}</h2>
+            <p class="text-blue-500 font-bold text-xs mb-8 uppercase tracking-widest">Member ID: {u['uid'] if u else 'N/A'}</p>
             <div class="space-y-3">
                 <a href="/mailbox" onclick="showGlobalLoader()" class="btn-premium flex items-center justify-center gap-2"><i class="fa fa-envelope"></i> My MailBox</a>
                 <a href="/logout" onclick="showGlobalLoader()" class="block py-4 text-red-500 font-black text-xs uppercase tracking-widest hover:underline">Sign Out Account</a>
@@ -768,34 +769,35 @@ def add_movie():
                 area.value = '';
             }}
             
-            // --- XHR Upload with Progress ---
             const uploadForm = document.getElementById('upload-form');
-            uploadForm.onsubmit = function(e) {{
-                e.preventDefault();
-                const formData = new FormData(uploadForm);
-                const xhr = new XMLHttpRequest();
-                
-                document.getElementById('upload-status').style.display = 'block';
-                showGlobalLoader();
+            if(uploadForm) {{
+                uploadForm.onsubmit = function(e) {{
+                    e.preventDefault();
+                    const formData = new FormData(uploadForm);
+                    const xhr = new XMLHttpRequest();
+                    
+                    document.getElementById('upload-status').style.display = 'block';
+                    showGlobalLoader();
 
-                xhr.upload.addEventListener('progress', function(e) {{
-                    if (e.lengthComputable) {{
-                        const percent = Math.round((e.loaded / e.total) * 100);
-                        document.getElementById('progress-bar').style.width = percent + '%';
-                        document.getElementById('progress-percent').innerText = percent + '%';
-                        document.getElementById('progress-text').innerText = 'Uploading: ' + percent + '%';
-                    }}
-                }});
+                    xhr.upload.addEventListener('progress', function(e) {{
+                        if (e.lengthComputable) {{
+                            const percent = Math.round((e.loaded / e.total) * 100);
+                            document.getElementById('progress-bar').style.width = percent + '%';
+                            document.getElementById('progress-percent').innerText = percent + '%';
+                            document.getElementById('progress-text').innerText = 'Uploading: ' + percent + '%';
+                        }}
+                    }});
 
-                xhr.onreadystatechange = function() {{
-                    if (xhr.readyState == 4 && xhr.status == 200) {{
-                        window.location.href = '/admin';
-                    }}
+                    xhr.onreadystatechange = function() {{
+                        if (xhr.readyState == 4 && xhr.status == 200) {{
+                            window.location.href = '/admin';
+                        }}
+                    }};
+
+                    xhr.open('POST', '/admin/add', true);
+                    xhr.send(formData);
                 }};
-
-                xhr.open('POST', '/admin/add', true);
-                xhr.send(formData);
-            }};
+            }}
 
             addL();
         </script>
@@ -1032,26 +1034,28 @@ def edit_movie(id):
         }}
         
         const editForm = document.getElementById('edit-form');
-        editForm.onsubmit = function(e) {{
-            e.preventDefault();
-            const formData = new FormData(editForm);
-            const xhr = new XMLHttpRequest();
-            document.getElementById('upload-status').style.display = 'block';
-            showGlobalLoader();
-            xhr.upload.addEventListener('progress', function(e) {{
-                if (e.lengthComputable) {{
-                    const percent = Math.round((e.loaded / e.total) * 100);
-                    document.getElementById('progress-bar').style.width = percent + '%';
-                    document.getElementById('progress-percent').innerText = percent + '%';
-                    document.getElementById('progress-text').innerText = 'Updating: ' + percent + '%';
-                }}
-            }});
-            xhr.onreadystatechange = function() {{
-                if (xhr.readyState == 4 && xhr.status == 200) window.location.href = '/admin';
+        if(editForm) {{
+            editForm.onsubmit = function(e) {{
+                e.preventDefault();
+                const formData = new FormData(editForm);
+                const xhr = new XMLHttpRequest();
+                document.getElementById('upload-status').style.display = 'block';
+                showGlobalLoader();
+                xhr.upload.addEventListener('progress', function(e) {{
+                    if (e.lengthComputable) {{
+                        const percent = Math.round((e.loaded / e.total) * 100);
+                        document.getElementById('progress-bar').style.width = percent + '%';
+                        document.getElementById('progress-percent').innerText = percent + '%';
+                        document.getElementById('progress-text').innerText = 'Updating: ' + percent + '%';
+                    }}
+                }});
+                xhr.onreadystatechange = function() {{
+                    if (xhr.readyState == 4 && xhr.status == 200) window.location.href = '/admin';
+                }};
+                xhr.open('POST', '/admin/edit/{id}', true);
+                xhr.send(formData);
             }};
-            xhr.open('POST', '/admin/edit/{id}', true);
-            xhr.send(formData);
-        }};
+        }}
     </script>
     </body></html>
     """
