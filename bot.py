@@ -106,6 +106,21 @@ CSS = """
     .f-item i { font-size: 22px; margin-bottom: 2px; }
     .btn-premium { background: linear-gradient(135deg, #3b82f6, #1e40af); color: white; font-weight: bold; padding: 14px; border-radius: 15px; transition: 0.3s; text-align: center; display: block; text-decoration: none; }
     .btn-premium:hover { transform: scale(1.02); opacity: 0.9; }
+
+    /* TikTok App Styles Integration */
+    .tiktok-app-container { width: 100%; display: flex; justify-content: center; padding: 20px 0; background-color: #000; }
+    .tiktok-wrapper { position: relative; width: 500px; height: 800px; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; border: 4px solid #9333ea; border-radius: 15px; background: #000; }
+    .tiktok-wrapper::-webkit-scrollbar { display: none; }
+    .video-slide { width: 100%; height: 800px; scroll-snap-align: start; scroll-snap-stop: always; position: relative; background: #000; }
+    .video-slide iframe { width: 100%; height: 100%; border: none; }
+    .logo-overlay-app { position: absolute; top: 25px; left: 20px; width: 80px; z-index: 20; pointer-events: none; }
+    .ep-tag-app { position: absolute; top: 25px; right: 20px; background: #9333ea; color: white; padding: 12px 20px; border-radius: 10px; font-weight: bold; z-index: 20; box-shadow: 0 0 15px rgba(0,0,0,0.5); white-space: nowrap; font-size: 16px; min-width: 110px; text-align: center; }
+    @media (max-width: 600px) {
+        .tiktok-wrapper { width: 100vw; height: 90vh; border: none; border-radius: 0; }
+        .video-slide { height: 90vh; }
+        .logo-overlay-app { width: 65px; top: 20px; }
+        .ep-tag-app { padding: 10px 15px; font-size: 14px; min-width: 90px; top: 20px; }
+    }
 </style>
 <div id="global-loader"><div class="text-center"><div class="spinner mx-auto mb-4"></div><p class="text-blue-500 font-bold animate-pulse">LOADING...</p></div></div>
 <script>
@@ -282,6 +297,12 @@ def movie_details(id):
                     <h3 class="text-xl font-bold mb-8 flex items-center gap-3 text-white border-b border-white/5 pb-4">
                         <i class="fa fa-play-circle text-blue-500 text-3xl"></i> DOWNLOAD & WATCH LINKS
                     </h3>
+                    
+                    <!-- Vertical TikTok Player Button -->
+                    <a href="/play-vertical/{{{{ movie._id }}}}" class="btn-premium !bg-purple-600 mb-6 block w-full !py-5 shadow-purple-500/20 font-black">
+                         🔥 WATCH IN VERTICAL PLAYER (SWIPE MODE)
+                    </a>
+
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {{% for link in movie.links %}}
                         <a href="{{{{ link.url }}}}" target="_blank" class="btn-premium">
@@ -295,6 +316,54 @@ def movie_details(id):
         </div>
     </div>
     {get_footer()}
+    </body></html>
+    """
+    return render_template_string(html, movie=movie, conf=conf)
+
+# --- NEW: VERTICAL PLAYER ROUTE ---
+@app.route('/play-vertical/<id>')
+def play_vertical(id):
+    conf = get_config()
+    movie = movies_col.find_one({"_id": ObjectId(id)})
+    if not movie: return redirect('/')
+    
+    html = f"""
+    <!DOCTYPE html><html><head>{CSS}<title>Swipe Player - {{{{ movie.name }}}}</title></head>
+    <body style="background:#000; overflow:hidden;">
+    <div class="fixed top-6 left-6 z-50">
+        <a href="/movie/{{{{ movie._id }}}}" class="bg-white/10 p-3 rounded-full text-white backdrop-blur-md border border-white/20 shadow-xl"><i class="fa fa-arrow-left"></i></a>
+    </div>
+
+    <div class="tiktok-app-container">
+      <div class="tiktok-wrapper" id="videoContainer">
+        {{% for link in movie.links %}}
+        <div class="video-slide" data-url="{{{{ link.url }}}}">
+          <img src="{{{{ conf.logo_url }}}}" class="logo-overlay-app">
+          <div class="ep-tag-app">{{{{ link.label }}}}</div>
+          <iframe class="video-frame" src="" scrolling="no" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+        </div>
+        {{% endfor %}}
+      </div>
+    </div>
+
+    <script>
+      const slides = document.querySelectorAll('.video-slide');
+      const container = document.getElementById('videoContainer');
+      const observerOptions = {{ root: container, threshold: 0.7 }};
+
+      const observer = new IntersectionObserver((entries) => {{
+        entries.forEach(entry => {{
+          const iframe = entry.target.querySelector('iframe');
+          const videoUrl = entry.target.getAttribute('data-url');
+          if (entry.isIntersecting) {{
+            if (iframe.src !== videoUrl) iframe.src = videoUrl;
+          }} else {{
+            iframe.src = ""; // Fast loading fix: Stop video when not in view
+          }}
+        }});
+      }}, observerOptions);
+      slides.forEach(slide => observer.observe(slide));
+    </script>
     </body></html>
     """
     return render_template_string(html, movie=movie, conf=conf)
