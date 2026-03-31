@@ -74,20 +74,31 @@ CSS = """
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&display=swap');
-    body { font-family: 'Outfit', sans-serif; background-color: #02040a; color: #e2e8f0; margin:0; overflow-x: hidden; }
+    body { font-family: 'Outfit', sans-serif; background-color: #02040a; color: #e2e8f0; margin:0; overflow-x: hidden; scroll-behavior: smooth; }
     .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.05); }
-    .movie-card { transition: 0.4s; border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; overflow: hidden; background: #0f172a; position: relative; }
+    .movie-card { transition: 0.4s; border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; overflow: hidden; background: #0f172a; position: relative; cursor: pointer; }
     .movie-card:hover { transform: translateY(-10px); border-color: #3b82f6; box-shadow: 0 20px 40px -15px rgba(59, 130, 246, 0.5); }
     
     .full-poster { width: 100%; height: auto; object-fit: contain; border-radius: 2rem; }
-    .card-thumb { width: 100%; object-fit: cover; }
+    .card-thumb { width: 100%; object-fit: cover; transition: opacity 0.5s; }
+    
+    /* Loading Overlay */
+    #global-loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(2, 4, 10, 0.8); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+    .spinner { width: 50px; height: 50px; border: 5px solid #1e293b; border-top: 5px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
     .slider-box { position: relative; width: 100%; overflow: hidden; border-radius: 30px; border: 1px solid rgba(59, 130, 246, 0.2); }
     .slide-img { display: none; width: 100%; height: 100%; object-fit: cover; animation: fade 1.5s ease; }
     .slide-active { display: block; }
     @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    
     input, select, textarea { background: #0f172a !important; color: white !important; border: 1px solid #1e293b !important; border-radius: 12px; padding: 12px; outline: none; width: 100%; transition: 0.3s; }
     input:focus { border-color: #3b82f6 !important; box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
+    
+    /* Upload Progress UI */
+    .progress-container { display: none; width: 100%; background: #0f172a; border-radius: 10px; margin-top: 10px; overflow: hidden; border: 1px solid #1e293b; }
+    .progress-bar { width: 0%; height: 12px; background: linear-gradient(90deg, #3b82f6, #06b6d4); transition: width 0.2s; }
+
     .sidebar-link { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-radius: 14px; transition: 0.3s; color: #94a3b8; font-weight: 600; text-decoration: none; }
     .sidebar-link:hover, .sidebar-link.active { background: #3b82f6; color: white; box-shadow: 0 10px 20px -5px rgba(59, 130, 246, 0.4); }
     .footer-nav { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: 92%; max-width: 480px; height: 75px; border-radius: 40px; z-index: 1000; border: 1px solid rgba(59, 130, 246, 0.3); display: flex; justify-content: space-around; align-items: center; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
@@ -97,6 +108,10 @@ CSS = """
     .btn-premium { background: linear-gradient(135deg, #3b82f6, #1e40af); color: white; font-weight: bold; padding: 14px; border-radius: 15px; transition: 0.3s; text-align: center; display: block; text-decoration: none; }
     .btn-premium:hover { transform: scale(1.02); opacity: 0.9; }
 </style>
+<div id="global-loader"><div class="text-center"><div class="spinner mx-auto mb-4"></div><p class="text-blue-500 font-bold animate-pulse">LOADING...</p></div></div>
+<script>
+    function showGlobalLoader() { document.getElementById('global-loader').style.display = 'flex'; }
+</script>
 """
 
 # --- UTILITY: USER NAV ---
@@ -114,14 +129,14 @@ def get_navbar(conf):
     
     return f'''
     <nav class="glass sticky top-0 z-50 px-4 md:px-10 py-4 flex justify-between items-center border-b border-white/5">
-        <a href="/" class="flex items-center gap-2 text-decoration-none">
-            <img src="{conf['logo_url']}" class="h-8 md:h-11">
+        <a href="/" onclick="showGlobalLoader()" class="flex items-center gap-2 text-decoration-none">
+            <img src="{conf['logo_url']}" class="h-8 md:h-11" loading="lazy">
             <span class="text-xl md:text-2xl font-black text-blue-500 uppercase italic tracking-tighter">{conf['site_name']}</span>
         </a>
         <div class="flex items-center gap-6">
             <form action="/" method="GET" class="hidden md:flex bg-slate-900 rounded-full px-4 py-1 border border-slate-800">
                 <input type="text" name="search" placeholder="Search movies..." class="bg-transparent border-none outline-none text-sm w-48 p-1">
-                <button type="submit" class="text-slate-500"><i class="fa fa-search"></i></button>
+                <button type="submit" onclick="showGlobalLoader()" class="text-slate-500"><i class="fa fa-search"></i></button>
             </form>
             {user_status}
         </div>
@@ -132,14 +147,14 @@ def get_navbar(conf):
 def get_footer():
     mail_link = ""
     if 'user_id' in session:
-        mail_link = '<a href="/mailbox" class="f-item"><i class="fa fa-envelope"></i><span>MAIL 📬</span></a>'
+        mail_link = f'<a href="/mailbox" onclick="showGlobalLoader()" class="f-item"><i class="fa fa-envelope"></i><span>MAIL 📬</span></a>'
     
     return f'''
     <div class="h-28"></div>
     <div class="glass footer-nav">
-        <a href="/" class="f-item"><i class="fa fa-home"></i><span>HOME 🏠</span></a>
-        <a href="/help" class="f-item"><i class="fa fa-question-circle"></i><span>HELP 🆘</span></a>
-        <a href="/request" class="f-item"><i class="fa fa-paper-plane"></i><span>REQUEST 🚀</span></a>
+        <a href="/" onclick="showGlobalLoader()" class="f-item"><i class="fa fa-home"></i><span>HOME 🏠</span></a>
+        <a href="/help" onclick="showGlobalLoader()" class="f-item"><i class="fa fa-question-circle"></i><span>HELP 🆘</span></a>
+        <a href="/request" onclick="showGlobalLoader()" class="f-item"><i class="fa fa-paper-plane"></i><span>REQUEST 🚀</span></a>
         {mail_link}
     </div>
     '''
@@ -176,7 +191,7 @@ def index():
         
         <!-- Search Bar Option Start -->
         <div class="mb-10 max-w-2xl mx-auto">
-            <form action="/" method="GET" class="relative group">
+            <form action="/" method="GET" class="relative group" onsubmit="showGlobalLoader()">
                 <input type="text" name="search" placeholder="Search Your Favorite Drama..." 
                        class="w-full bg-slate-900/50 border-2 border-slate-800 py-4 px-6 rounded-2xl text-white focus:border-blue-600 transition-all duration-300 shadow-2xl"
                        value="{{{{ request.args.get('search', '') }}}}">
@@ -186,7 +201,7 @@ def index():
             </form>
             {{% if request.args.get('search') %}}
                 <div class="text-center mt-4">
-                    <a href="/" class="text-xs font-bold text-blue-500 uppercase tracking-widest hover:text-white transition"><i class="fa fa-times-circle"></i> Clear Search</a>
+                    <a href="/" onclick="showGlobalLoader()" class="text-xs font-bold text-blue-500 uppercase tracking-widest hover:text-white transition"><i class="fa fa-times-circle"></i> Clear Search</a>
                 </div>
             {{% endif %}}
         </div>
@@ -197,8 +212,8 @@ def index():
         {{% if slider_movies %}}
         <div class="slider-box mb-12 shadow-2xl">
             {{% for sm in slider_movies %}}
-            <a href="/movie/{{{{ sm._id }}}}">
-                <img src="{{{{ sm.thumbnail if sm.thumbnail else sm.poster }}}}" class="slide-img">
+            <a href="/movie/{{{{ sm._id }}}}" onclick="showGlobalLoader()">
+                <img src="{{{{ sm.thumbnail if sm.thumbnail else sm.poster }}}}" class="slide-img" loading="lazy">
             </a>
             {{% endfor %}}
         </div>
@@ -212,8 +227,8 @@ def index():
                 <h2 class="text-xl font-bold mb-6 flex items-center gap-3"><span class="w-2 h-8 bg-blue-600 rounded-full shadow-[0_0_15px_#3b82f6]"></span> {{{{ cat_name }}}}</h2>
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
                     {{% for m in ms %}}
-                    <div class="movie-card cursor-pointer" onclick="location.href='/movie/{{{{ m._id }}}}'">
-                        <img src="{{{{ m.poster }}}}" class="card-thumb" style="height: {{{{ conf.home_poster_height }}}}">
+                    <div class="movie-card" onclick="showGlobalLoader(); location.href='/movie/{{{{ m._id }}}}'">
+                        <img src="{{{{ m.poster }}}}" class="card-thumb" style="height: {{{{ conf.home_poster_height }}}}" loading="lazy">
                         <div class="absolute top-3 left-3 bg-blue-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase border border-white/20">{{{{ m.badge }}}}</div>
                         <div class="p-4 bg-slate-900/90 backdrop-blur-md"><h3 class="font-bold text-sm truncate uppercase italic tracking-tighter">{{{{ m.name }}}}</h3></div>
                     </div>
@@ -255,7 +270,7 @@ def movie_details(id):
     <div class="container mx-auto px-4 py-10">
         <div class="flex flex-col md:flex-row gap-10">
             <div class="w-full md:w-[450px]">
-                <img src="{{{{ movie.thumbnail if movie.thumbnail else movie.poster }}}}" class="full-poster shadow-2xl border-4 border-slate-900">
+                <img src="{{{{ movie.thumbnail if movie.thumbnail else movie.poster }}}}" class="full-poster shadow-2xl border-4 border-slate-900" loading="lazy">
             </div>
             <div class="flex-1">
                 <span class="bg-blue-600 px-5 py-1 rounded-full text-xs font-bold uppercase shadow-lg">{{{{ movie.badge }}}}</span>
@@ -292,7 +307,7 @@ def help_page():
     {get_navbar(conf)}
     <div class="container mx-auto px-4 py-10 text-center">
         <div class="glass p-10 md:p-20 rounded-[3.5rem] max-w-4xl mx-auto shadow-2xl border-t-4 border-blue-600">
-            <img src="{conf['logo_url']}" class="h-24 mx-auto mb-8 drop-shadow-2xl">
+            <img src="{conf['logo_url']}" class="h-24 mx-auto mb-8 drop-shadow-2xl" loading="lazy">
             <h1 class="text-4xl font-black mb-6 uppercase italic text-blue-500">Need Assistance?</h1>
             <p class="text-slate-400 text-lg mb-12 leading-relaxed"> {{{{ conf.help_text }}}} </p>
             <a href="{conf['channel_link']}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white px-12 py-5 rounded-2xl font-bold text-lg shadow-2xl inline-flex items-center gap-3 transition transform hover:scale-105 text-decoration-none">
@@ -322,7 +337,7 @@ def register():
     html = f"""
     <!DOCTYPE html><html><head>{CSS}<title>Sign Up</title></head>
     <body class="flex items-center justify-center min-h-screen p-4">
-        <form method="POST" class="glass p-10 rounded-[2.5rem] w-full max-w-md space-y-6 shadow-2xl border-t-4 border-blue-600">
+        <form method="POST" onsubmit="showGlobalLoader()" class="glass p-10 rounded-[2.5rem] w-full max-w-md space-y-6 shadow-2xl border-t-4 border-blue-600">
             <h2 class="text-3xl font-black text-center text-blue-500 uppercase italic">Create Account</h2>
             {{% with messages = get_flashed_messages() %}}{{% if messages %}}<p class="text-red-500 text-xs text-center font-bold">{{{{messages[0]}}}}</p>{{% endif %}}{{% endwith %}}
             <input type="text" name="name" placeholder="Your Full Name" required>
@@ -351,7 +366,7 @@ def login():
     html = f"""
     <!DOCTYPE html><html><head>{CSS}<title>Login</title></head>
     <body class="flex items-center justify-center min-h-screen p-4">
-        <form method="POST" class="glass p-10 rounded-[2.5rem] w-full max-w-md space-y-6 shadow-2xl border-t-4 border-blue-600">
+        <form method="POST" onsubmit="showGlobalLoader()" class="glass p-10 rounded-[2.5rem] w-full max-w-md space-y-6 shadow-2xl border-t-4 border-blue-600">
             <h2 class="text-3xl font-black text-center text-blue-500 uppercase italic">User Login</h2>
             {{% with messages = get_flashed_messages() %}}{{% if messages %}}<p class="text-red-500 text-xs text-center font-bold">{{{{messages[0]}}}}</p>{{% endif %}}{{% endwith %}}
             <input type="text" name="user" placeholder="Username" required>
@@ -388,7 +403,7 @@ def admin_login():
     html = f"""
     <!DOCTYPE html><html><head>{CSS}<title>{title}</title></head>
     <body class="flex items-center justify-center min-h-screen bg-[#05070a]">
-        <form method="POST" class="glass p-12 rounded-[3rem] w-full max-w-md space-y-6 border-b-4 border-blue-600">
+        <form method="POST" onsubmit="showGlobalLoader()" class="glass p-12 rounded-[3rem] w-full max-w-md space-y-6 border-b-4 border-blue-600">
             <div class="text-center"><i class="fa fa-user-shield text-5xl text-blue-500 mb-4"></i></div>
             <h2 class="text-2xl font-black text-center text-white uppercase italic tracking-widest">{title}</h2>
             {{% if is_setup %}}<p class="text-[10px] text-yellow-500 text-center font-bold uppercase">Configure your admin credentials first.</p>{{% endif %}}
@@ -430,7 +445,7 @@ def request_movie():
     <!DOCTYPE html><html><head>{CSS}<title>Request Movie</title></head><body>
     {get_navbar(conf)}
     <div class="container mx-auto px-4 py-10">
-        <form method="POST" class="glass p-10 rounded-[3rem] max-w-xl mx-auto space-y-6 border-t-4 border-blue-600 shadow-2xl">
+        <form method="POST" onsubmit="showGlobalLoader()" class="glass p-10 rounded-[3rem] max-w-xl mx-auto space-y-6 border-t-4 border-blue-600 shadow-2xl">
             <h2 class="text-3xl font-black text-blue-500 uppercase italic">Request Movie 🚀</h2>
             <p class="text-xs text-slate-500 mb-6 uppercase font-bold">Provide drama details and we will upload it for you.</p>
             <div class="space-y-1">
@@ -503,8 +518,8 @@ def profile():
             <h2 class="text-3xl font-black mb-1 uppercase tracking-tighter italic">{u['name']}</h2>
             <p class="text-blue-500 font-bold text-xs mb-8 uppercase tracking-widest">Member ID: {u['uid']}</p>
             <div class="space-y-3">
-                <a href="/mailbox" class="btn-premium flex items-center justify-center gap-2"><i class="fa fa-envelope"></i> My MailBox</a>
-                <a href="/logout" class="block py-4 text-red-500 font-black text-xs uppercase tracking-widest hover:underline">Sign Out Account</a>
+                <a href="/mailbox" onclick="showGlobalLoader()" class="btn-premium flex items-center justify-center gap-2"><i class="fa fa-envelope"></i> My MailBox</a>
+                <a href="/logout" onclick="showGlobalLoader()" class="block py-4 text-red-500 font-black text-xs uppercase tracking-widest hover:underline">Sign Out Account</a>
             </div>
         </div>
     </div>
@@ -552,7 +567,7 @@ def admin_dash():
                         {{% for m in movies %}}
                         <tr class="hover:bg-slate-800/50 transition">
                             <td class="p-6 flex items-center gap-4">
-                                <img src="{{{{ m.thumbnail if m.thumbnail else m.poster }}}}" class="w-12 h-16 rounded-xl object-cover shadow-lg border border-white/5">
+                                <img src="{{{{ m.thumbnail if m.thumbnail else m.poster }}}}" class="w-12 h-16 rounded-xl object-cover shadow-lg border border-white/5" loading="lazy">
                                 <span class="font-bold text-sm text-slate-200">{{{{ m.name }}}}</span>
                             </td>
                             <td class="p-6 text-xs text-blue-400 font-bold uppercase tracking-widest">{{{{ m.category }}}}</td>
@@ -672,7 +687,17 @@ def add_movie():
         <main class="flex-grow p-6 md:p-12">
             <div class="max-w-4xl glass p-10 rounded-[3rem] shadow-2xl mx-auto border-t-4 border-blue-600">
                 <h2 class="text-3xl font-black mb-10 text-blue-500 uppercase italic tracking-tighter">Publish New Movie</h2>
-                <form method="POST" enctype="multipart/form-data" class="space-y-8">
+                
+                <!-- Upload Progress Section -->
+                <div id="upload-status" class="progress-container mb-6">
+                    <div class="flex justify-between px-4 py-2 text-[10px] font-bold text-blue-400 uppercase tracking-widest">
+                        <span id="progress-text">Uploading: 0%</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+
+                <form id="upload-form" method="POST" enctype="multipart/form-data" class="space-y-8">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Movie Full Name</label><input type="text" name="name" required placeholder="e.g. Kingdom S01 Dual Audio"></div>
                         <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Select Category</label>
@@ -697,23 +722,20 @@ def add_movie():
 
                     <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Badge Info</label><input type="text" name="badge" placeholder="e.g. 1080p Dual Audio"></div>
                     
-                    <!-- Link Management -->
                     <div id="btn-box" class="space-y-4 pt-6 border-t border-slate-800">
                         <h4 class="text-blue-500 font-black uppercase text-xs tracking-widest flex items-center gap-2 mb-4"><i class="fa fa-link"></i> Download/Watch Link Management</h4>
                     </div>
 
-                    <!-- Multi Link Section Start -->
                     <div class="mt-6 p-4 border border-blue-500/20 bg-blue-500/5 rounded-2xl">
                         <h4 class="text-blue-500 font-black uppercase text-[10px] mb-2 tracking-widest">Multi Link Adder (Bulk)</h4>
-                        <textarea id="multi-link-area" rows="4" class="text-xs" placeholder="Format: Label - URL (one per line)&#10;Download 1080p - https://t.me/link1&#10;Download 720p - https://t.me/link2"></textarea>
+                        <textarea id="multi-link-area" rows="4" class="text-xs" placeholder="Format: Label - URL (one per line)"></textarea>
                         <button type="button" onclick="processMultiLinks()" class="mt-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase hover:bg-blue-600 hover:text-white transition">Process Multi Links</button>
                     </div>
-                    <!-- Multi Link Section End -->
 
                     <button type="button" onclick="addL()" class="text-blue-400 font-bold text-xs uppercase hover:underline tracking-widest">+ Add Single Link Button</button>
                     
                     <div class="pt-8 flex gap-4">
-                        <button class="bg-blue-600 flex-1 py-4 rounded-2xl font-black text-white shadow-xl uppercase tracking-widest">Publish to Site</button>
+                        <button type="submit" class="bg-blue-600 flex-1 py-4 rounded-2xl font-black text-white shadow-xl uppercase tracking-widest">Publish to Site</button>
                         <a href="/admin" class="bg-slate-800 px-12 py-4 rounded-2xl font-bold text-white shadow-lg uppercase text-xs flex items-center text-decoration-none">Cancel</a>
                     </div>
                 </form>
@@ -725,7 +747,7 @@ def add_movie():
                 const d = document.createElement('div');
                 d.className = "flex gap-4 p-4 glass rounded-2xl border border-white/5 relative group animate-fade-in";
                 d.innerHTML = `
-                    <input type="text" name="l_name[]" placeholder="Button Label (e.g. Ep 01)" required class="text-sm" value="${{label}}">
+                    <input type="text" name="l_name[]" placeholder="Button Label" required class="text-sm" value="${{label}}">
                     <input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm" value="${{url}}">
                     <button type="button" onclick="this.parentElement.remove()" class="text-red-500 p-2 hover:bg-red-500/10 rounded-lg"><i class="fa fa-times"></i></button>
                 `;
@@ -745,6 +767,35 @@ def add_movie():
                 }});
                 area.value = '';
             }}
+            
+            // --- XHR Upload with Progress ---
+            const uploadForm = document.getElementById('upload-form');
+            uploadForm.onsubmit = function(e) {{
+                e.preventDefault();
+                const formData = new FormData(uploadForm);
+                const xhr = new XMLHttpRequest();
+                
+                document.getElementById('upload-status').style.display = 'block';
+                showGlobalLoader();
+
+                xhr.upload.addEventListener('progress', function(e) {{
+                    if (e.lengthComputable) {{
+                        const percent = Math.round((e.loaded / e.total) * 100);
+                        document.getElementById('progress-bar').style.width = percent + '%';
+                        document.getElementById('progress-percent').innerText = percent + '%';
+                        document.getElementById('progress-text').innerText = 'Uploading: ' + percent + '%';
+                    }}
+                }});
+
+                xhr.onreadystatechange = function() {{
+                    if (xhr.readyState == 4 && xhr.status == 200) {{
+                        window.location.href = '/admin';
+                    }}
+                }};
+
+                xhr.open('POST', '/admin/add', true);
+                xhr.send(formData);
+            }};
 
             addL();
         </script>
@@ -802,20 +853,17 @@ def admin_settings():
             <h1 class="text-4xl font-black uppercase tracking-tighter italic">Global Configuration</h1>
             
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                <form method="POST" class="glass p-8 rounded-[3rem] space-y-4 shadow-2xl border-t-4 border-blue-600">
+                <form method="POST" onsubmit="showGlobalLoader()" class="glass p-8 rounded-[3rem] space-y-4 shadow-2xl border-t-4 border-blue-600">
                     <h3 class="text-blue-500 font-black uppercase text-xs tracking-widest border-b border-slate-800 pb-3">Branding & Social</h3>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Site Display Name</label><input type="text" name="site_name" value="{{{{conf.site_name}}}}"></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Logo Image URL</label><input type="text" name="logo_url" value="{{{{conf.logo_url}}}}"></div>
-                    
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Slider Height (Desktop)</label><input type="text" name="slider_height_desktop" value="{{{{conf.slider_height_desktop}}}}" placeholder="480px"></div>
-                        <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Slider Height (Mobile)</label><input type="text" name="slider_height_mobile" value="{{{{conf.slider_height_mobile}}}}" placeholder="230px"></div>
+                        <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Slider (Desktop)</label><input type="text" name="slider_height_desktop" value="{{{{conf.slider_height_desktop}}}}"></div>
+                        <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Slider (Mobile)</label><input type="text" name="slider_height_mobile" value="{{{{conf.slider_height_mobile}}}}"></div>
                     </div>
-                    
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Home Poster Height</label><input type="text" name="home_poster_height" value="{{{{conf.home_poster_height}}}}"></div>
-                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Help Page Description</label><textarea name="help_text" rows="3">{{{{conf.help_text}}}}</textarea></div>
+                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Help Text</label><textarea name="help_text" rows="3">{{{{conf.help_text}}}}</textarea></div>
                     <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Telegram Link</label><input type="text" name="channel_link" value="{{{{conf.channel_link}}}}"></div>
-                    <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Home Slider Limit</label><input type="number" name="slider_limit" value="{{{{conf.slider_limit}}}}"></div>
                     <button name="update_branding" class="bg-blue-600 w-full py-4 rounded-2xl font-bold uppercase tracking-widest mt-4">Save Identity</button>
                 </form>
 
@@ -835,7 +883,7 @@ def admin_settings():
                             {{% endfor %}}
                         </div>
                     </div>
-                    <form method="POST" class="glass p-8 rounded-[3rem] space-y-4 shadow-2xl border-t-4 border-red-600">
+                    <form method="POST" onsubmit="showGlobalLoader()" class="glass p-8 rounded-[3rem] space-y-4 shadow-2xl border-t-4 border-red-600">
                         <h3 class="text-red-500 font-black uppercase text-xs tracking-widest border-b border-slate-800 pb-3">Security Access</h3>
                         <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Admin Username</label><input type="text" name="admin_user" value="{{{{conf.admin_user}}}}"></div>
                         <div class="space-y-1"><label class="text-[10px] uppercase font-bold text-slate-500">Admin Password</label><input type="text" name="admin_pass" value="{{{{conf.admin_pass}}}}"></div>
@@ -844,14 +892,12 @@ def admin_settings():
                 </div>
             </div>
 
-            <form method="POST" class="glass p-10 rounded-[3.5rem] space-y-8 shadow-2xl border-t-4 border-yellow-500">
+            <form method="POST" onsubmit="showGlobalLoader()" class="glass p-10 rounded-[3.5rem] space-y-8 shadow-2xl border-t-4 border-yellow-500">
                 <h3 class="text-yellow-500 font-black uppercase text-xs tracking-widest border-b border-slate-800 pb-3 italic">Monetization Scripts</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     {{% for k, v in conf.ads.items() %}}
                     <div class="space-y-2">
-                        <label class="text-[11px] uppercase font-bold text-slate-500 tracking-widest flex items-center gap-2">
-                            <i class="fa fa-code"></i> {{{{k | upper}}}} SLOT
-                        </label>
+                        <label class="text-[11px] uppercase font-bold text-slate-500 tracking-widest flex items-center gap-2"><i class="fa fa-code"></i> {{{{k | upper}}}} SLOT</label>
                         <textarea name="{{{{k}}}}" rows="4" placeholder="Paste ad code...">{{{{v}}}}</textarea>
                     </div>
                     {{% endfor %}}
@@ -891,7 +937,16 @@ def edit_movie(id):
     <!DOCTYPE html><html><head>{CSS}<title>Edit - {{{{movie.name}}}}</title></head><body class="p-10">
     <div class="max-w-4xl glass p-10 rounded-[3rem] mx-auto shadow-2xl border-t-4 border-blue-600">
         <h2 class="text-2xl font-black mb-8 uppercase italic">Edit Movie Entry</h2>
-        <form method="POST" enctype="multipart/form-data" class="space-y-6">
+        
+        <div id="upload-status" class="progress-container mb-6">
+            <div class="flex justify-between px-4 py-2 text-[10px] font-bold text-blue-400 uppercase tracking-widest">
+                <span id="progress-text">Updating: 0%</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+
+        <form id="edit-form" method="POST" enctype="multipart/form-data" class="space-y-6">
             <div class="space-y-1">
                 <label class="text-xs font-bold text-slate-500 uppercase px-1">Movie Name</label>
                 <input type="text" name="name" value="{{{{movie.name}}}}" required>
@@ -899,24 +954,19 @@ def edit_movie(id):
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8 border-y border-slate-800 py-6">
                 <div class="space-y-4">
-                    <h4 class="text-xs font-bold text-blue-500">POSTER (Home View)</h4>
+                    <h4 class="text-xs font-bold text-blue-500">POSTER</h4>
                     <input type="text" name="poster" placeholder="URL" value="{{{{movie.poster if movie.poster.startswith('http') else ''}}}}">
                     <input type="file" name="poster_file" accept="image/*" class="text-xs">
                 </div>
                 <div class="space-y-4">
-                    <h4 class="text-xs font-bold text-green-500">THUMBNAIL (Detail & Slider)</h4>
+                    <h4 class="text-xs font-bold text-green-500">THUMBNAIL</h4>
                     <input type="text" name="thumbnail" placeholder="URL" value="{{{{movie.thumbnail if movie.thumbnail and movie.thumbnail.startswith('http') else ''}}}}">
                     <input type="file" name="thumb_file" accept="image/*" class="text-xs">
                 </div>
             </div>
 
-            <div class="space-y-1">
-                <label class="text-xs font-bold text-slate-500 uppercase px-1">Badge</label>
-                <input type="text" name="badge" value="{{{{movie.badge}}}}">
-            </div>
-
-            <div class="space-y-1">
-                <label class="text-xs font-bold text-slate-500 uppercase px-1">Category</label>
+            <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Badge</label><input type="text" name="badge" value="{{{{movie.badge}}}}"></div>
+            <div class="space-y-1"><label class="text-xs font-bold text-slate-500 uppercase px-1">Category</label>
                 <select name="category">
                     {{% for c in cats %}}<option value="{{{{c.name}}}}" {{% if c.name == movie.category %}}selected{{% endif %}}>{{{{c.name}}}}</option>{{% endfor %}}
                 </select>
@@ -926,27 +976,21 @@ def edit_movie(id):
                 <h4 class="text-blue-500 font-black uppercase text-xs tracking-widest mb-4">Manage Links</h4>
                 {{% for l in movie.links %}}
                 <div class="flex gap-3 relative group">
-                    <input name="l_name[]" value="{{{{l.label}}}}" placeholder="Label">
-                    <input name="l_url[]" value="{{{{l.url}}}}" placeholder="URL">
+                    <input name="l_name[]" value="{{{{l.label}}}}" placeholder="Label" class="l-name-field">
+                    <input name="l_url[]" value="{{{{l.url}}}}" placeholder="URL" class="l-url-field">
                     <button type="button" onclick="this.parentElement.remove()" class="text-red-500"><i class="fa fa-times"></i></button>
                 </div>
                 {{% endfor %}}
             </div>
 
-            <!-- Multi Link Section Edit Start -->
             <div class="mt-6 p-4 border border-blue-500/20 bg-blue-500/5 rounded-2xl">
-                <div class="flex justify-between items-center mb-2">
-                    <h4 class="text-blue-500 font-black uppercase text-[10px] tracking-widest">Multi Link Adder (Bulk)</h4>
-                    <button type="button" onclick="loadToTextarea()" class="text-[10px] text-slate-400 hover:text-blue-400 font-bold uppercase transition">Sync Links to Area</button>
-                </div>
-                <textarea id="multi-link-area" rows="4" class="text-xs" placeholder="Format: Label - URL (one per line)&#10;Download 1080p - https://t.me/link1"></textarea>
-                <button type="button" onclick="processMultiLinks()" class="mt-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase hover:bg-blue-600 hover:text-white transition">Process Multi Links</button>
+                <button type="button" onclick="loadToTextarea()" class="text-[10px] text-slate-400 hover:text-blue-400 font-bold uppercase transition mb-2">Sync Links to Area</button>
+                <textarea id="multi-link-area" rows="4" class="text-xs" placeholder="Label - URL"></textarea>
+                <button type="button" onclick="processMultiLinks()" class="mt-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase hover:bg-blue-600 hover:text-white transition">Process</button>
             </div>
-            <!-- Multi Link Section Edit End -->
 
             <button type="button" onclick="addL()" class="text-blue-400 font-bold text-xs uppercase hover:underline tracking-widest mt-2">+ Add More Link</button>
-
-            <button class="bg-blue-600 w-full py-4 rounded-xl font-bold uppercase tracking-widest mt-6">Update Database</button>
+            <button type="submit" class="bg-blue-600 w-full py-4 rounded-xl font-bold uppercase tracking-widest mt-6">Update Database</button>
             <a href="/admin" class="block text-center mt-4 text-slate-500 font-bold text-xs uppercase">Discard Changes</a>
         </form>
     </div>
@@ -956,8 +1000,8 @@ def edit_movie(id):
             const d = document.createElement('div');
             d.className = "flex gap-3 p-2 glass rounded-xl border border-white/5 mt-2 relative group";
             d.innerHTML = `
-                <input type="text" name="l_name[]" placeholder="Button Label" required class="text-sm w-full l-name-field" value="${{label}}">
-                <input type="text" name="l_url[]" placeholder="Destination URL" required class="text-sm w-full l-url-field" value="${{url}}">
+                <input type="text" name="l_name[]" placeholder="Label" required class="text-sm w-full l-name-field" value="${{label}}">
+                <input type="text" name="l_url[]" placeholder="URL" required class="text-sm w-full l-url-field" value="${{url}}">
                 <button type="button" onclick="this.parentElement.remove()" class="text-red-500 p-2"><i class="fa fa-times"></i></button>
             `;
             b.appendChild(d);
@@ -977,24 +1021,37 @@ def edit_movie(id):
             area.value = '';
         }}
 
-        // নিউ ফিচার: বর্তমান বক্সের লিংকগুলোকে টেক্সট এরিয়াতে লোড করার জন্য (এডিটিং সহজ করতে)
         function loadToTextarea() {{
             const names = document.querySelectorAll('.l-name-field');
             const urls = document.querySelectorAll('.l-url-field');
             let content = "";
             for(let i=0; i<names.length; i++){{
-                if(names[i].value && urls[i].value){{
-                    content += names[i].value + " - " + urls[i].value + "\\n";
-                }}
+                if(names[i].value && urls[i].value) content += names[i].value + " - " + urls[i].value + "\\n";
             }}
             document.getElementById('multi-link-area').value = content.trim();
-            // চাইলে নিচের লাইনের কমেন্ট সরিয়ে বক্সগুলো ডিলিট করে দিতে পারেন যদি ফ্রেশ এড করতে চান
-            // document.getElementById('btn-box').innerHTML = '<h4 class="text-blue-500 font-black uppercase text-xs tracking-widest mb-4">Manage Links</h4>';
         }}
         
-        // বিদ্যমান ইনপুটগুলোতে ক্লাস যোগ করার জন্য
-        document.querySelectorAll('input[name="l_name[]"]').forEach(el => el.classList.add('l-name-field'));
-        document.querySelectorAll('input[name="l_url[]"]').forEach(el => el.classList.add('l-url-field'));
+        const editForm = document.getElementById('edit-form');
+        editForm.onsubmit = function(e) {{
+            e.preventDefault();
+            const formData = new FormData(editForm);
+            const xhr = new XMLHttpRequest();
+            document.getElementById('upload-status').style.display = 'block';
+            showGlobalLoader();
+            xhr.upload.addEventListener('progress', function(e) {{
+                if (e.lengthComputable) {{
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    document.getElementById('progress-bar').style.width = percent + '%';
+                    document.getElementById('progress-percent').innerText = percent + '%';
+                    document.getElementById('progress-text').innerText = 'Updating: ' + percent + '%';
+                }}
+            }});
+            xhr.onreadystatechange = function() {{
+                if (xhr.readyState == 4 && xhr.status == 200) window.location.href = '/admin';
+            }};
+            xhr.open('POST', '/admin/edit/{id}', true);
+            xhr.send(formData);
+        }};
     </script>
     </body></html>
     """
