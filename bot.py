@@ -1,6 +1,6 @@
 import os
 import base64
-from flask import Flask, render_template_string, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template_string, request, redirect, url_for, session, flash, jsonify, Response
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson.objectid import ObjectId
 from datetime import datetime
@@ -24,10 +24,34 @@ notif_col = db['notifications']
 chat_col = db['live_chats'] # New Collection for Live Chat
 
 # --- Speed Optimization: MongoDB Indexing ---
-# এটি আপনার সাইটকে অনেক বেশি ফাস্ট করবে
 movies_col.create_index([("name", "text")])
 movies_col.create_index([("category", ASCENDING)])
 chat_col.create_index([("user_id", ASCENDING), ("timestamp", DESCENDING)])
+
+# --- NEW: PWA (App Download) Supporting Routes ---
+@app.route('/manifest.json')
+def manifest():
+    conf = get_config()
+    return jsonify({
+        "name": conf['site_name'],
+        "short_name": conf['site_name'],
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#02040a",
+        "theme_color": "#3b82f6",
+        "icons": [{
+            "src": conf['logo_url'],
+            "sizes": "192x192",
+            "type": "image/png"
+        }]
+    })
+
+@app.route('/sw.js')
+def service_worker():
+    return Response("""
+    self.addEventListener('install', (e) => { e.waitUntil(caches.open('dw-v1').then((c) => c.addAll(['/']))); });
+    self.addEventListener('fetch', (e) => { e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request))); });
+    """, mimetype='application/javascript')
 
 # --- Database & Config Initializer ---
 def get_config():
@@ -77,6 +101,8 @@ def process_media(req, file_key, url_key):
 CSS = """
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#3b82f6">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
@@ -121,6 +147,14 @@ CSS = """
     .video-slide iframe { width: 100%; height: 100%; border: none; }
     .logo-overlay-app { position: absolute; top: 25px; left: 20px; width: 80px; z-index: 20; pointer-events: none; }
     .ep-tag-app { position: absolute; top: 25px; right: 20px; background: #9333ea; color: white; padding: 12px 20px; border-radius: 10px; font-weight: bold; z-index: 20; box-shadow: 0 0 15px rgba(0,0,0,0.5); white-space: nowrap; font-size: 16px; min-width: 110px; text-align: center; }
+
+    /* Vertical Player Episode Menu */
+    .ep-menu-btn { position: absolute; bottom: 80px; right: 20px; z-index: 100; background: rgba(59, 130, 246, 0.8); width: 50px; height: 50px; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; cursor: pointer; border: 2px solid rgba(255,255,255,0.2); backdrop-filter: blur(10px); }
+    .ep-side-menu { position: absolute; top: 0; right: 0; width: 250px; height: 100%; background: rgba(15, 23, 42, 0.95); z-index: 101; border-left: 2px solid #3b82f6; transform: translateX(100%); transition: 0.3s; overflow-y: auto; padding: 20px; }
+    .ep-side-menu.active { transform: translateX(0); }
+    .ep-item-v { background: #1e293b; padding: 12px; border-radius: 10px; margin-bottom: 10px; font-weight: bold; font-size: 13px; cursor: pointer; transition: 0.2s; border: 1px solid transparent; }
+    .ep-item-v:hover { background: #3b82f6; border-color: white; }
+
     @media (max-width: 600px) {
         .tiktok-wrapper { width: 100vw; height: 90vh; border: none; border-radius: 0; }
         .video-slide { height: 90vh; }
@@ -142,6 +176,30 @@ CSS = """
 <script>
     function showGlobalLoader() { document.getElementById('global-loader').style.display = 'flex'; }
     window.onpageshow = function(event) { if (event.persisted) { document.getElementById('global-loader').style.display = 'none'; } };
+
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+    }
+
+    // PWA Install Logic
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        const btn = document.getElementById('install-btn');
+        if(btn) btn.style.display = 'inline-block';
+    });
+
+    function installDramaApp() {
+        if(deferredPrompt) {
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((res) => {
+                if(res.outcome === 'accepted') document.getElementById('install-btn').style.display = 'none';
+                deferredPrompt = null;
+            });
+        }
+    }
 </script>
 """
 
@@ -151,6 +209,7 @@ def get_navbar(conf):
     if 'user_id' in session:
         user_status = f'''
         <div class="flex items-center gap-4">
+            <button id="install-btn" onclick="installDramaApp()" style="display:none;" class="bg-purple-600 px-4 py-2 rounded-full text-[10px] font-bold text-white shadow-lg"><i class="fa fa-download"></i> APP</button>
             <a href="/profile" class="text-blue-400 font-bold flex items-center gap-2 text-decoration-none">
                 <i class="fa fa-user-circle text-2xl"></i>
                 <span class="hidden md:inline">{session.get("user_name")}</span>
@@ -415,10 +474,23 @@ def play_vertical(id):
         <a href="/movie/{{{{ movie._id }}}}" class="bg-white/10 p-3 rounded-full text-white backdrop-blur-md border border-white/20 shadow-xl"><i class="fa fa-arrow-left"></i></a>
     </div>
 
+    <div class="ep-menu-btn" onclick="toggleVerticalEpMenu()">
+        <i class="fa fa-list"></i>
+    </div>
+
+    <div class="ep-side-menu" id="sideEpMenu">
+        <h3 class="text-white font-bold mb-4 border-b border-white/10 pb-2">EPISODES</h3>
+        {{% for link in movie.links %}}
+        <div class="ep-item-v" onclick="jumpToEp({{{{ loop.index0 }}}})">
+            {{{{ link.label }}}}
+        </div>
+        {{% endfor %}}
+    </div>
+
     <div class="tiktok-app-container">
       <div class="tiktok-wrapper" id="videoContainer">
         {{% for link in movie.links %}}
-        <div class="video-slide" data-url="{{{{ link.url }}}}">
+        <div class="video-slide" data-url="{{{{ link.url }}}}" id="slide-{{{{ loop.index0 }}}}">
           <img src="{{{{ conf.logo_url }}}}" class="logo-overlay-app">
           <div class="ep-tag-app">{{{{ link.label }}}}</div>
           <iframe class="video-frame" src="" scrolling="no" allow="autoplay; encrypted-media" allowfullscreen></iframe>
@@ -428,6 +500,16 @@ def play_vertical(id):
     </div>
 
     <script>
+      function toggleVerticalEpMenu() {{
+          document.getElementById('sideEpMenu').classList.toggle('active');
+      }}
+
+      function jumpToEp(idx) {{
+          const slide = document.getElementById('slide-' + idx);
+          slide.scrollIntoView({{ behavior: 'smooth' }});
+          toggleVerticalEpMenu();
+      }}
+
       const slides = document.querySelectorAll('.video-slide');
       const container = document.getElementById('videoContainer');
       const observerOptions = {{ root: container, threshold: 0.7 }};
