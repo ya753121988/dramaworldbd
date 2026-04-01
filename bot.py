@@ -1395,4 +1395,5 @@ def page_not_found(e):
     return redirect('/')
 
 if __name__ == '__main__':
-    app.run(debug=True, port=int(os.environ.get("PORT", 5000)))
+    # Render-এ চালানোর জন্য host='0.0.0.0' থাকা বাধ্যতামূলক
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
