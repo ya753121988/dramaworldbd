@@ -1,6 +1,6 @@
 import os
 import base64
-from flask import Flask, render_template_string, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template_string, request, redirect, url_for, session, flash, jsonify, Response
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson.objectid import ObjectId
 from datetime import datetime
@@ -27,6 +27,31 @@ chat_col = db['live_chats'] # New Collection for Live Chat
 movies_col.create_index([("name", "text")])
 movies_col.create_index([("category", ASCENDING)])
 chat_col.create_index([("user_id", ASCENDING), ("timestamp", DESCENDING)])
+
+# --- NEW: PWA (App Download) Supporting Routes ---
+@app.route('/manifest.json')
+def manifest():
+    conf = get_config()
+    return jsonify({
+        "name": conf['site_name'],
+        "short_name": conf['site_name'],
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#02040a",
+        "theme_color": "#3b82f6",
+        "icons": [{
+            "src": conf['logo_url'],
+            "sizes": "192x192",
+            "type": "image/png"
+        }]
+    })
+
+@app.route('/sw.js')
+def service_worker():
+    return Response("""
+    self.addEventListener('install', (e) => { e.waitUntil(caches.open('dw-v1').then((c) => c.addAll(['/']))); });
+    self.addEventListener('fetch', (e) => { e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request))); });
+    """, mimetype='application/javascript')
 
 # --- Database & Config Initializer ---
 def get_config():
@@ -76,6 +101,8 @@ def process_media(req, file_key, url_key):
 CSS = """
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#3b82f6">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
@@ -149,6 +176,30 @@ CSS = """
 <script>
     function showGlobalLoader() { document.getElementById('global-loader').style.display = 'flex'; }
     window.onpageshow = function(event) { if (event.persisted) { document.getElementById('global-loader').style.display = 'none'; } };
+
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+    }
+
+    // PWA Install Logic
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        const btn = document.getElementById('install-btn');
+        if(btn) btn.style.display = 'inline-block';
+    });
+
+    function installDramaApp() {
+        if(deferredPrompt) {
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((res) => {
+                if(res.outcome === 'accepted') document.getElementById('install-btn').style.display = 'none';
+                deferredPrompt = null;
+            });
+        }
+    }
 </script>
 """
 
@@ -158,6 +209,7 @@ def get_navbar(conf):
     if 'user_id' in session:
         user_status = f'''
         <div class="flex items-center gap-4">
+            <button id="install-btn" onclick="installDramaApp()" style="display:none;" class="bg-purple-600 px-4 py-2 rounded-full text-[10px] font-bold text-white shadow-lg"><i class="fa fa-download"></i> APP</button>
             <a href="/profile" class="text-blue-400 font-bold flex items-center gap-2 text-decoration-none">
                 <i class="fa fa-user-circle text-2xl"></i>
                 <span class="hidden md:inline">{session.get("user_name")}</span>
