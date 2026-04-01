@@ -1,7 +1,7 @@
 import os
 import base64
-from flask import Flask, render_template_string, request, redirect, url_for, session, flash
-from pymongo import MongoClient
+from flask import Flask, render_template_string, request, redirect, url_for, session, flash, jsonify
+from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson.objectid import ObjectId
 from datetime import datetime
 
@@ -10,7 +10,6 @@ app = Flask(__name__)
 app.secret_key = "dramaworld_ultra_premium_ultimate_v15"
 
 # --- MongoDB Connection ---
-# কানেকশন হ্যাং হওয়া রোধ করতে timeout যোগ করা হয়েছে
 MONGO_URI = "mongodb+srv://akash:arafat@cluster0.dpg7qid.mongodb.net/?appName=Cluster0"
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client['dramaworld_db']
@@ -22,6 +21,13 @@ categories_col = db['categories']
 users_col = db['users']
 requests_col = db['requests']
 notif_col = db['notifications']
+chat_col = db['live_chats'] # New Collection for Live Chat
+
+# --- Speed Optimization: MongoDB Indexing ---
+# এটি আপনার সাইটকে অনেক বেশি ফাস্ট করবে
+movies_col.create_index([("name", "text")])
+movies_col.create_index([("category", ASCENDING)])
+chat_col.create_index([("user_id", ASCENDING), ("timestamp", DESCENDING)])
 
 # --- Database & Config Initializer ---
 def get_config():
@@ -121,6 +127,16 @@ CSS = """
         .logo-overlay-app { width: 65px; top: 20px; }
         .ep-tag-app { padding: 10px 15px; font-size: 14px; min-width: 90px; top: 20px; }
     }
+
+    /* --- Live Chat UI Styles --- */
+    .chat-bubble { position: fixed; bottom: 100px; right: 20px; width: 60px; height: 60px; background: #3b82f6; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-size: 24px; cursor: pointer; box-shadow: 0 10px 20px rgba(59, 130, 246, 0.4); z-index: 999; }
+    .chat-box { position: fixed; bottom: 100px; right: 20px; width: 320px; height: 450px; background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; display: none; flex-direction: column; overflow: hidden; z-index: 1000; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+    .chat-header { background: #3b82f6; padding: 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+    .chat-body { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+    .chat-footer { padding: 10px; border-top: 1px solid #1e293b; display: flex; gap: 5px; }
+    .msg { padding: 8px 12px; border-radius: 12px; max-width: 80%; font-size: 13px; }
+    .msg-user { background: #3b82f6; align-self: flex-end; color: white; }
+    .msg-admin { background: #1e293b; align-self: flex-start; color: #94a3b8; }
 </style>
 <div id="global-loader"><div class="text-center"><div class="spinner mx-auto mb-4"></div><p class="text-blue-500 font-bold animate-pulse">LOADING...</p></div></div>
 <script>
@@ -161,8 +177,46 @@ def get_navbar(conf):
 # --- UTILITY: FOOTER ---
 def get_footer():
     mail_link = ""
+    chat_html = ""
     if 'user_id' in session:
         mail_link = f'<a href="/mailbox" onclick="showGlobalLoader()" class="f-item"><i class="fa fa-envelope"></i><span>MAIL 📬</span></a>'
+        # চ্যাট বাবল এবং বক্স
+        chat_html = f'''
+        <div class="chat-bubble" onclick="toggleChat()"><i class="fa fa-comments"></i></div>
+        <div class="chat-box" id="userChatBox">
+            <div class="chat-header"><span>Live Support</span><i class="fa fa-times cursor-pointer" onclick="toggleChat()"></i></div>
+            <div class="chat-body" id="chatBody"></div>
+            <div class="chat-footer">
+                <input type="text" id="chatInput" placeholder="Type message..." style="margin:0; padding:8px;">
+                <button onclick="sendMsg()" class="bg-blue-600 px-4 rounded-xl"><i class="fa fa-paper-plane"></i></button>
+            </div>
+        </div>
+        <script>
+            function toggleChat() {{
+                const box = document.getElementById('userChatBox');
+                box.style.display = box.style.display === 'flex' ? 'none' : 'flex';
+                if(box.style.display === 'flex') {{ loadMsgs(); }}
+            }}
+            function sendMsg() {{
+                const input = document.getElementById('chatInput');
+                const text = input.value;
+                if(!text) return;
+                fetch('/api/chat/send', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ message: text }})
+                }}).then(() => {{ input.value = ''; loadMsgs(); }});
+            }}
+            function loadMsgs() {{
+                fetch('/api/chat/get').then(res => res.json()).then(data => {{
+                    const body = document.getElementById('chatBody');
+                    body.innerHTML = data.map(m => `<div class="msg ${{m.sender === 'user' ? 'msg-user' : 'msg-admin'}}">${{m.message}}</div>`).join('');
+                    body.scrollTop = body.scrollHeight;
+                }});
+            }}
+            setInterval(() => {{ if(document.getElementById('userChatBox').style.display === 'flex') loadMsgs(); }}, 3000);
+        </script>
+        '''
     
     return f'''
     <div class="h-28"></div>
@@ -172,7 +226,30 @@ def get_footer():
         <a href="/request" onclick="showGlobalLoader()" class="f-item"><i class="fa fa-paper-plane"></i><span>REQUEST 🚀</span></a>
         {mail_link}
     </div>
+    {chat_html}
     '''
+
+# --- NEW CHAT API ROUTES ---
+
+@app.route('/api/chat/send', methods=['POST'])
+def chat_send():
+    if 'user_id' not in session: return jsonify({"error": "unauthorized"}), 401
+    data = request.json
+    chat_col.insert_one({
+        "user_id": session['user_id'],
+        "user_name": session['user_name'],
+        "message": data['message'],
+        "sender": "user",
+        "timestamp": datetime.now()
+    })
+    return jsonify({"status": "sent"})
+
+@app.route('/api/chat/get')
+def chat_get():
+    if 'user_id' not in session: return jsonify([])
+    msgs = list(chat_col.find({"user_id": session['user_id']}).sort("timestamp", 1))
+    for m in msgs: m['_id'] = str(m['_id'])
+    return jsonify(msgs)
 
 # --- USER PANEL ROUTES ---
 
@@ -182,7 +259,10 @@ def index():
     search = request.args.get('search')
     
     if search:
-        movies = list(movies_col.find({"name": {"$regex": search, "$options": "i"}}))
+        # Text index ব্যবহারের মাধ্যমে সার্চ ফাস্ট করা হয়েছে
+        movies = list(movies_col.find({"$text": {"$search": search}}))
+        if not movies: # Fallback if text search fails
+             movies = list(movies_col.find({"name": {"$regex": search, "$options": "i"}}))
         results_title = f'Search Results for "{search}"'
         slider_movies = []
         grouped_movies = {results_title: movies}
@@ -190,6 +270,7 @@ def index():
         all_cats = list(categories_col.find())
         grouped_movies = {}
         for cat in all_cats:
+            # Indexing এর কারণে এটি এখন ফাস্ট কাজ করবে
             grouped_movies[cat['name']] = list(movies_col.find({"category": cat['name']}).sort("_id", -1))
         
         slider_movies = list(movies_col.find().sort("_id", -1).limit(int(conf['slider_limit'])))
@@ -614,6 +695,7 @@ def admin_dash():
             <div class="mb-12"><h2 class="text-2xl font-black text-blue-500 uppercase italic">Admin Panel</h2><p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">DramaWorld Control</p></div>
             <nav class="space-y-2 flex-grow">
                 <a href="/admin" class="sidebar-link active"><i class="fa fa-dashboard"></i> Dashboard</a>
+                <a href="/admin/chats" class="sidebar-link"><i class="fa fa-comments"></i> User Messages</a>
                 <a href="/admin/requests" class="sidebar-link"><i class="fa fa-paper-plane"></i> User Requests</a>
                 <a href="/admin/add" class="sidebar-link"><i class="fa fa-plus-circle"></i> Add New Movie</a>
                 <a href="/admin/settings" class="sidebar-link"><i class="fa fa-cog"></i> Site Settings</a>
@@ -657,6 +739,93 @@ def admin_dash():
     """
     return render_template_string(html, movies=movies)
 
+# --- ADMIN CHAT MANAGEMENT ---
+
+@app.route('/admin/chats')
+def admin_chats():
+    if not session.get('admin'): return redirect('/admin/wp')
+    # ইউনিক ইউজার লিস্ট বের করা যারা মেসেজ করেছে
+    chatters = chat_col.aggregate([
+        {"$sort": {"timestamp": -1}},
+        {"$group": {
+            "_id": "$user_id",
+            "user_name": {"$first": "$user_name"},
+            "last_msg": {"$first": "$message"},
+            "time": {"$first": "$timestamp"}
+        }},
+        {"$sort": {"time": -1}}
+    ])
+    
+    html = f"""
+    <!DOCTYPE html><html><head>{CSS}<title>User Messages</title></head>
+    <body class="flex flex-col md:flex-row min-h-screen">
+        <div class="w-full md:w-72 bg-[#080c14] border-r border-slate-900 p-8 flex flex-col shadow-2xl h-full sticky top-0">
+            <h2 class="text-2xl font-black text-blue-500 mb-10 italic uppercase">ADMIN</h2>
+            <nav class="space-y-2">
+                <a href="/admin" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a>
+                <a href="/admin/chats" class="sidebar-link active"><i class="fa fa-comments"></i> User Messages</a>
+                <a href="/admin/requests" class="sidebar-link"><i class="fa fa-paper-plane"></i> User Requests</a>
+                <a href="/admin/settings" class="sidebar-link"><i class="fa fa-cog"></i> Settings</a>
+            </nav>
+        </div>
+        <main class="flex-grow p-6 md:p-12">
+            <h1 class="text-3xl font-black mb-10 uppercase italic">Active Conversations</h1>
+            <div class="grid grid-cols-1 gap-4">
+                {{% for c in chatters %}}
+                <a href="/admin/chat/view/{{{{c._id}}}}" class="glass p-6 rounded-3xl flex justify-between items-center hover:border-blue-500 transition">
+                    <div>
+                        <h3 class="font-bold text-blue-500 uppercase">{{{{c.user_name}}}}</h3>
+                        <p class="text-xs text-slate-400 mt-1">{{{{c.last_msg}}}}</p>
+                    </div>
+                    <span class="text-[10px] text-slate-600 uppercase font-bold">{{{{c.time.strftime('%H:%M')}}}}</span>
+                </a>
+                {{% endfor %}}
+            </div>
+        </main>
+    </body></html>
+    """
+    return render_template_string(html, chatters=chatters)
+
+@app.route('/admin/chat/view/<uid>', methods=['GET', 'POST'])
+def admin_chat_view(uid):
+    if not session.get('admin'): return redirect('/admin/wp')
+    u_info = users_col.find_one({"_id": ObjectId(uid)})
+    
+    if request.method == 'POST':
+        chat_col.insert_one({
+            "user_id": uid,
+            "user_name": u_info['name'] if u_info else "User",
+            "message": request.form.get('msg'),
+            "sender": "admin",
+            "timestamp": datetime.now()
+        })
+        return redirect(f'/admin/chat/view/{uid}')
+
+    msgs = list(chat_col.find({"user_id": uid}).sort("timestamp", 1))
+    
+    html = f"""
+    <!DOCTYPE html><html><head>{CSS}<title>Chat with User</title></head>
+    <body class="flex flex-col min-h-screen">
+        <header class="glass p-6 sticky top-0 z-50 flex items-center gap-4 border-b border-white/5">
+            <a href="/admin/chats" class="text-blue-500"><i class="fa fa-arrow-left"></i></a>
+            <h2 class="font-black uppercase italic tracking-tighter">Chat: {{{{u_info.name if u_info else 'User'}}}}</h2>
+        </header>
+        <main class="flex-grow p-6 space-y-4 overflow-y-auto" id="adminChatBody">
+            {{% for m in msgs %}}
+            <div class="msg {{{{ 'msg-user bg-blue-600 ml-auto' if m.sender == 'admin' else 'msg-admin bg-slate-800' }}}}">
+                {{{{m.message}}}}
+            </div>
+            {{% endfor %}}
+        </main>
+        <form method="POST" class="p-6 glass border-t border-white/5 flex gap-4">
+            <input type="text" name="msg" placeholder="Type reply..." required class="flex-1">
+            <button class="bg-blue-600 px-8 py-4 rounded-xl font-bold uppercase">Send</button>
+        </form>
+        <script>document.getElementById('adminChatBody').scrollTop = document.getElementById('adminChatBody').scrollHeight;</script>
+    </body></html>
+    """
+    return render_template_string(html, msgs=msgs, u_info=u_info)
+
 @app.route('/admin/requests', methods=['GET', 'POST'])
 def admin_requests():
     if not session.get('admin'): return redirect('/admin/wp')
@@ -686,6 +855,7 @@ def admin_requests():
             <h2 class="text-2xl font-black text-blue-500 mb-10 italic">ADMIN</h2>
             <nav class="space-y-2">
                 <a href="/admin" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a>
+                <a href="/admin/chats" class="sidebar-link"><i class="fa fa-comments"></i> User Messages</a>
                 <a href="/admin/requests" class="sidebar-link active"><i class="fa fa-paper-plane"></i> User Requests</a>
                 <a href="/admin/add" class="sidebar-link"><i class="fa fa-plus-circle"></i> Add Movie</a>
                 <a href="/admin/settings" class="sidebar-link"><i class="fa fa-cog"></i> Settings</a>
@@ -749,6 +919,7 @@ def add_movie():
             <h2 class="text-2xl font-black text-blue-500 mb-10 uppercase italic">ADMIN</h2>
             <nav class="space-y-2 flex-grow">
                 <a href="/admin" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a>
+                <a href="/admin/chats" class="sidebar-link"><i class="fa fa-comments"></i> User Messages</a>
                 <a href="/admin/requests" class="sidebar-link"><i class="fa fa-paper-plane"></i> User Requests</a>
                 <a href="/admin/add" class="sidebar-link active"><i class="fa fa-plus-circle"></i> Add Movie</a>
                 <a href="/admin/settings" class="sidebar-link"><i class="fa fa-cog"></i> Settings</a>
@@ -915,6 +1086,7 @@ def admin_settings():
             <h2 class="text-2xl font-black text-blue-500 mb-10 italic uppercase">System</h2>
             <nav class="space-y-2">
                 <a href="/admin" class="sidebar-link"><i class="fa fa-dashboard"></i> Dashboard</a>
+                <a href="/admin/chats" class="sidebar-link"><i class="fa fa-comments"></i> User Messages</a>
                 <a href="/admin/requests" class="sidebar-link"><i class="fa fa-paper-plane"></i> User Requests</a>
                 <a href="/admin/add" class="sidebar-link"><i class="fa fa-plus-circle"></i> Add Movie</a>
                 <a href="/admin/settings" class="sidebar-link active"><i class="fa fa-cog"></i> Site Settings</a>
