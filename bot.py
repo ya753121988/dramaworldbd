@@ -1,14 +1,13 @@
 import os
 import base64
-from flask import Flask, render_template_string, request, redirect, url_for, session, flash, jsonify, Response
+from flask import Flask, render_template_string, request, redirect, url_for, session, flash, jsonify
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson.objectid import ObjectId
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # --- Flask Project Handler ---
 app = Flask(__name__)
 app.secret_key = "dramaworld_ultra_premium_ultimate_v15"
-app.permanent_session_lifetime = timedelta(days=7) # সেশন স্থায়ী করার জন্য
 
 # --- MongoDB Connection ---
 MONGO_URI = "mongodb+srv://akash:arafat@cluster0.dpg7qid.mongodb.net/?appName=Cluster0"
@@ -28,31 +27,6 @@ chat_col = db['live_chats'] # New Collection for Live Chat
 movies_col.create_index([("name", "text")])
 movies_col.create_index([("category", ASCENDING)])
 chat_col.create_index([("user_id", ASCENDING), ("timestamp", DESCENDING)])
-
-# --- NEW: PWA (App Download) Supporting Routes ---
-@app.route('/manifest.json')
-def manifest():
-    conf = get_config()
-    return jsonify({
-        "name": conf['site_name'],
-        "short_name": conf['site_name'],
-        "start_url": "/",
-        "display": "standalone",
-        "background_color": "#02040a",
-        "theme_color": "#3b82f6",
-        "icons": [{
-            "src": conf['logo_url'],
-            "sizes": "192x192",
-            "type": "image/png"
-        }]
-    })
-
-@app.route('/sw.js')
-def service_worker():
-    return Response("""
-    self.addEventListener('install', (e) => { e.waitUntil(caches.open('dw-v1').then((c) => c.addAll(['/']))); });
-    self.addEventListener('fetch', (e) => { e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request))); });
-    """, mimetype='application/javascript')
 
 # --- Database & Config Initializer ---
 def get_config():
@@ -102,8 +76,6 @@ def process_media(req, file_key, url_key):
 CSS = """
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#3b82f6">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
@@ -177,30 +149,6 @@ CSS = """
 <script>
     function showGlobalLoader() { document.getElementById('global-loader').style.display = 'flex'; }
     window.onpageshow = function(event) { if (event.persisted) { document.getElementById('global-loader').style.display = 'none'; } };
-
-    // Service Worker Registration
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js');
-    }
-
-    // PWA Install Logic
-    let deferredPrompt;
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        const btn = document.getElementById('install-btn');
-        if(btn) btn.style.display = 'inline-block';
-    });
-
-    function installDramaApp() {
-        if(deferredPrompt) {
-            deferredPrompt.prompt();
-            deferredPrompt.userChoice.then((res) => {
-                if(res.outcome === 'accepted') document.getElementById('install-btn').style.display = 'none';
-                deferredPrompt = null;
-            });
-        }
-    }
 </script>
 """
 
@@ -210,7 +158,6 @@ def get_navbar(conf):
     if 'user_id' in session:
         user_status = f'''
         <div class="flex items-center gap-4">
-            <button id="install-btn" onclick="installDramaApp()" style="display:none;" class="bg-purple-600 px-4 py-2 rounded-full text-[10px] font-bold text-white shadow-lg"><i class="fa fa-download"></i> APP</button>
             <a href="/profile" class="text-blue-400 font-bold flex items-center gap-2 text-decoration-none">
                 <i class="fa fa-user-circle text-2xl"></i>
                 <span class="hidden md:inline">{session.get("user_name")}</span>
@@ -221,7 +168,7 @@ def get_navbar(conf):
     return f'''
     <nav class="glass sticky top-0 z-50 px-4 md:px-10 py-4 flex justify-between items-center border-b border-white/5">
         <a href="/" onclick="showGlobalLoader()" class="flex items-center gap-2 text-decoration-none">
-            <img src="{conf['logo_url']}" class="h-8 md:h-11">
+            <img src="{conf['logo_url']}" class="h-8 md:h-11" loading="lazy">
             <span class="text-xl md:text-2xl font-black text-blue-500 uppercase italic tracking-tighter">{conf['site_name']}</span>
         </a>
         <div class="flex items-center gap-6">
@@ -351,7 +298,7 @@ def index():
             <form action="/" method="GET" class="relative group" onsubmit="showGlobalLoader()">
                 <input type="text" name="search" placeholder="Search Your Favorite Drama..." 
                        class="w-full bg-slate-900/50 border-2 border-slate-800 py-4 px-6 rounded-2xl text-white focus:border-blue-600 transition-all duration-300 shadow-2xl"
-                       value="{{{{ request.args.get('search', '') }}}}" required>
+                       value="{{{{ request.args.get('search', '') }}}}">
                 <button type="submit" class="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 p-2.5 rounded-xl transition-colors shadow-lg">
                     <i class="fa fa-search text-white"></i>
                 </button>
@@ -369,7 +316,7 @@ def index():
         {{% if slider_movies %}}
         <div class="slider-box mb-12 shadow-2xl">
             {{% for sm in slider_movies %}}
-            <a href="/movie/{{{{ sm._id|string }}}}" onclick="showGlobalLoader()">
+            <a href="/movie/{{{{ sm._id }}}}" onclick="showGlobalLoader()">
                 <img src="{{{{ sm.thumbnail if sm.thumbnail else sm.poster }}}}" class="slide-img" loading="lazy">
             </a>
             {{% endfor %}}
@@ -384,7 +331,7 @@ def index():
                 <h2 class="text-xl font-bold mb-6 flex items-center gap-3"><span class="w-2 h-8 bg-blue-600 rounded-full shadow-[0_0_15px_#3b82f6]"></span> {{{{ cat_name }}}}</h2>
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
                     {{% for m in ms %}}
-                    <div class="movie-card" onclick="showGlobalLoader(); location.href='/movie/{{{{ m._id|string }}}}'">
+                    <div class="movie-card" onclick="showGlobalLoader(); location.href='/movie/{{{{ m._id }}}}'">
                         <img src="{{{{ m.poster }}}}" class="card-thumb" style="height: {{{{ conf.home_poster_height }}}}" loading="lazy">
                         <div class="absolute top-3 left-3 bg-blue-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase border border-white/20">{{{{ m.badge }}}}</div>
                         <div class="p-4 bg-slate-900/90 backdrop-blur-md"><h3 class="font-bold text-sm truncate uppercase italic tracking-tighter">{{{{ m.name }}}}</h3></div>
@@ -418,10 +365,7 @@ def index():
 @app.route('/movie/<id>')
 def movie_details(id):
     conf = get_config()
-    try:
-        movie = movies_col.find_one({"_id": ObjectId(id)})
-    except:
-        return redirect('/')
+    movie = movies_col.find_one({"_id": ObjectId(id)})
     if not movie: return redirect('/')
     
     html = f"""
@@ -443,7 +387,7 @@ def movie_details(id):
                     </h3>
                     
                     <!-- Vertical TikTok Player Button -->
-                    <a href="/play-vertical/{{{{ movie._id|string }}}}" class="btn-premium !bg-purple-600 mb-6 block w-full !py-5 shadow-purple-500/20 font-black">
+                    <a href="/play-vertical/{{{{ movie._id }}}}" class="btn-premium !bg-purple-600 mb-6 block w-full !py-5 shadow-purple-500/20 font-black">
                          🔥 WATCH IN VERTICAL PLAYER (SWIPE MODE)
                     </a>
 
@@ -468,17 +412,14 @@ def movie_details(id):
 @app.route('/play-vertical/<id>')
 def play_vertical(id):
     conf = get_config()
-    try:
-        movie = movies_col.find_one({"_id": ObjectId(id)})
-    except:
-        return redirect('/')
+    movie = movies_col.find_one({"_id": ObjectId(id)})
     if not movie: return redirect('/')
     
     html = f"""
     <!DOCTYPE html><html><head>{CSS}<title>Swipe Player - {{{{ movie.name }}}}</title></head>
     <body style="background:#000; overflow:hidden;">
     <div class="fixed top-6 left-6 z-50">
-        <a href="/movie/{{{{ movie._id|string }}}}" class="bg-white/10 p-3 rounded-full text-white backdrop-blur-md border border-white/20 shadow-xl"><i class="fa fa-arrow-left"></i></a>
+        <a href="/movie/{{{{ movie._id }}}}" class="bg-white/10 p-3 rounded-full text-white backdrop-blur-md border border-white/20 shadow-xl"><i class="fa fa-arrow-left"></i></a>
     </div>
 
     <div class="ep-menu-btn" onclick="toggleVerticalEpMenu()">
@@ -560,12 +501,12 @@ def help_page():
     """
     return render_template_string(html, conf=conf)
 
-# --- AUTH SYSTEM (FIXED FOR SESSION PERSISTENCE) ---
+# --- AUTH SYSTEM ---
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        name, user, pw = request.form.get('name'), request.form.get('user', '').strip(), request.form.get('pass', '').strip()
+        name, user, pw = request.form.get('name'), request.form.get('user'), request.form.get('pass')
         if users_col.find_one({"user": user}):
             flash("Username already exists! Try another.")
         else:
@@ -597,7 +538,7 @@ def login():
         pw = request.form.get('pass', '').strip()
         u = users_col.find_one({"user": user, "pass": pw})
         if u:
-            session.permanent = True # সেশন স্থায়ী করার জন্য
+            session.clear()
             session['user_id'] = str(u['_id'])
             session['user_name'] = u['name']
             return redirect('/')
@@ -630,11 +571,11 @@ def admin_login():
         user = request.form.get('user', '').strip()
         pw = request.form.get('pass', '').strip()
         if is_setup:
-            settings_col.update_one({"type": "config"}, {"$set": {"admin_user": user, "admin_pass": pw}}, upsert=True)
+            settings_col.update_one({"type": "config"}, {"$set": {"admin_user": user, "admin_pass": pw}})
             flash("Admin Credentials Set Successfully! Now Login.")
             return redirect('/admin/wp')
         if user == conf['admin_user'] and pw == conf['admin_pass']:
-            session.permanent = True
+            session.clear()
             session['admin'] = True
             return redirect('/admin')
         flash("Incorrect Admin Credentials!")
@@ -814,8 +755,8 @@ def admin_dash():
                             <td class="p-6 text-xs text-blue-400 font-bold uppercase tracking-widest">{{{{ m.category }}}}</td>
                             <td class="p-6">
                                 <div class="flex justify-center gap-4">
-                                    <a href="/admin/edit/{{{{ m._id|string }}}}" class="p-3 bg-blue-500/10 text-blue-500 rounded-xl hover:bg-blue-500 hover:text-white transition shadow-md"><i class="fa fa-edit"></i></a>
-                                    <a href="/admin/delete/{{{{ m._id|string }}}}" class="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition shadow-md" onclick="return confirm('Delete this movie from library?')"><i class="fa fa-trash"></i></a>
+                                    <a href="/admin/edit/{{{{ m._id }}}}" class="p-3 bg-blue-500/10 text-blue-500 rounded-xl hover:bg-blue-500 hover:text-white transition shadow-md"><i class="fa fa-edit"></i></a>
+                                    <a href="/admin/delete/{{{{ m._id }}}}" class="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition shadow-md" onclick="return confirm('Delete this movie from library?')"><i class="fa fa-trash"></i></a>
                                 </div>
                             </td>
                         </tr>
@@ -1151,19 +1092,19 @@ def admin_settings():
                 "slider_height_desktop": request.form.get('slider_height_desktop', '480px'),
                 "slider_height_mobile": request.form.get('slider_height_mobile', '230px'),
                 "home_poster_height": request.form.get('home_poster_height', '320px')
-            }}, upsert=True)
+            }})
         elif 'update_profile' in request.form:
             settings_col.update_one({"type": "config"}, {"$set": {
                 "admin_user": request.form.get('admin_user'),
                 "admin_pass": request.form.get('admin_pass')
-            }}, upsert=True)
+            }})
         elif 'add_cat' in request.form:
             categories_col.insert_one({"name": request.form.get('cat_name')})
         elif 'del_cat' in request.form:
             categories_col.delete_one({"_id": ObjectId(request.form.get('cat_id'))})
         elif 'update_ads' in request.form:
             ads = {k: request.form.get(k) for k in conf['ads'].keys()}
-            settings_col.update_one({"type": "config"}, {"$set": {"ads": ads}}, upsert=True)
+            settings_col.update_one({"type": "config"}, {"$set": {"ads": ads}})
             
         flash("System Configuration Updated!")
         return redirect('/admin/settings')
