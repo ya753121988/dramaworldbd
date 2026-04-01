@@ -24,7 +24,6 @@ notif_col = db['notifications']
 chat_col = db['live_chats'] # New Collection for Live Chat
 
 # --- Speed Optimization: MongoDB Indexing ---
-# এটি আপনার সাইটকে অনেক বেশি ফাস্ট করবে
 movies_col.create_index([("name", "text")])
 movies_col.create_index([("category", ASCENDING)])
 chat_col.create_index([("user_id", ASCENDING), ("timestamp", DESCENDING)])
@@ -121,6 +120,14 @@ CSS = """
     .video-slide iframe { width: 100%; height: 100%; border: none; }
     .logo-overlay-app { position: absolute; top: 25px; left: 20px; width: 80px; z-index: 20; pointer-events: none; }
     .ep-tag-app { position: absolute; top: 25px; right: 20px; background: #9333ea; color: white; padding: 12px 20px; border-radius: 10px; font-weight: bold; z-index: 20; box-shadow: 0 0 15px rgba(0,0,0,0.5); white-space: nowrap; font-size: 16px; min-width: 110px; text-align: center; }
+
+    /* Vertical Player Episode Menu */
+    .ep-menu-btn { position: absolute; bottom: 80px; right: 20px; z-index: 100; background: rgba(59, 130, 246, 0.8); width: 50px; height: 50px; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; cursor: pointer; border: 2px solid rgba(255,255,255,0.2); backdrop-filter: blur(10px); }
+    .ep-side-menu { position: absolute; top: 0; right: 0; width: 250px; height: 100%; background: rgba(15, 23, 42, 0.95); z-index: 101; border-left: 2px solid #3b82f6; transform: translateX(100%); transition: 0.3s; overflow-y: auto; padding: 20px; }
+    .ep-side-menu.active { transform: translateX(0); }
+    .ep-item-v { background: #1e293b; padding: 12px; border-radius: 10px; margin-bottom: 10px; font-weight: bold; font-size: 13px; cursor: pointer; transition: 0.2s; border: 1px solid transparent; }
+    .ep-item-v:hover { background: #3b82f6; border-color: white; }
+
     @media (max-width: 600px) {
         .tiktok-wrapper { width: 100vw; height: 90vh; border: none; border-radius: 0; }
         .video-slide { height: 90vh; }
@@ -415,10 +422,23 @@ def play_vertical(id):
         <a href="/movie/{{{{ movie._id }}}}" class="bg-white/10 p-3 rounded-full text-white backdrop-blur-md border border-white/20 shadow-xl"><i class="fa fa-arrow-left"></i></a>
     </div>
 
+    <div class="ep-menu-btn" onclick="toggleVerticalEpMenu()">
+        <i class="fa fa-list"></i>
+    </div>
+
+    <div class="ep-side-menu" id="sideEpMenu">
+        <h3 class="text-white font-bold mb-4 border-b border-white/10 pb-2">EPISODES</h3>
+        {{% for link in movie.links %}}
+        <div class="ep-item-v" onclick="jumpToEp({{{{ loop.index0 }}}})">
+            {{{{ link.label }}}}
+        </div>
+        {{% endfor %}}
+    </div>
+
     <div class="tiktok-app-container">
       <div class="tiktok-wrapper" id="videoContainer">
         {{% for link in movie.links %}}
-        <div class="video-slide" data-url="{{{{ link.url }}}}">
+        <div class="video-slide" data-url="{{{{ link.url }}}}" id="slide-{{{{ loop.index0 }}}}">
           <img src="{{{{ conf.logo_url }}}}" class="logo-overlay-app">
           <div class="ep-tag-app">{{{{ link.label }}}}</div>
           <iframe class="video-frame" src="" scrolling="no" allow="autoplay; encrypted-media" allowfullscreen></iframe>
@@ -428,6 +448,16 @@ def play_vertical(id):
     </div>
 
     <script>
+      function toggleVerticalEpMenu() {{
+          document.getElementById('sideEpMenu').classList.toggle('active');
+      }}
+
+      function jumpToEp(idx) {{
+          const slide = document.getElementById('slide-' + idx);
+          slide.scrollIntoView({{ behavior: 'smooth' }});
+          toggleVerticalEpMenu();
+      }}
+
       const slides = document.querySelectorAll('.video-slide');
       const container = document.getElementById('videoContainer');
       const observerOptions = {{ root: container, threshold: 0.7 }};
