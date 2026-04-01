@@ -553,12 +553,14 @@ def help_page():
     """
     return render_template_string(html, conf=conf)
 
-# --- AUTH SYSTEM ---
+# --- AUTH SYSTEM (FIXED REGISTRATION/LOGIN) ---
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        name, user, pw = request.form.get('name'), request.form.get('user'), request.form.get('pass')
+        name = request.form.get('name')
+        user = request.form.get('user', '').strip() # Strip used for clean input
+        pw = request.form.get('pass', '').strip()
         if users_col.find_one({"user": user}):
             flash("Username already exists! Try another.")
         else:
@@ -623,7 +625,7 @@ def admin_login():
         user = request.form.get('user', '').strip()
         pw = request.form.get('pass', '').strip()
         if is_setup:
-            settings_col.update_one({"type": "config"}, {"$set": {"admin_user": user, "admin_pass": pw}})
+            settings_col.update_one({"type": "config"}, {"$set": {"admin_user": user, "admin_pass": pw}}, upsert=True)
             flash("Admin Credentials Set Successfully! Now Login.")
             return redirect('/admin/wp')
         if user == conf['admin_user'] and pw == conf['admin_pass']:
@@ -1127,6 +1129,7 @@ def add_movie():
     """
     return render_template_string(html, cats=cats)
 
+# --- FIXED SETTINGS (BRANDING & LOGO FIX) ---
 @app.route('/admin/settings', methods=['GET', 'POST'])
 def admin_settings():
     if not session.get('admin'): return redirect('/admin/wp')
@@ -1135,6 +1138,7 @@ def admin_settings():
     
     if request.method == 'POST':
         if 'update_branding' in request.form:
+            # upsert=True makes sure it updates the existing or creates if missing
             settings_col.update_one({"type": "config"}, {"$set": {
                 "site_name": request.form.get('site_name'),
                 "logo_url": request.form.get('logo_url'),
@@ -1144,19 +1148,19 @@ def admin_settings():
                 "slider_height_desktop": request.form.get('slider_height_desktop', '480px'),
                 "slider_height_mobile": request.form.get('slider_height_mobile', '230px'),
                 "home_poster_height": request.form.get('home_poster_height', '320px')
-            }})
+            }}, upsert=True)
         elif 'update_profile' in request.form:
             settings_col.update_one({"type": "config"}, {"$set": {
                 "admin_user": request.form.get('admin_user'),
                 "admin_pass": request.form.get('admin_pass')
-            }})
+            }}, upsert=True)
         elif 'add_cat' in request.form:
             categories_col.insert_one({"name": request.form.get('cat_name')})
         elif 'del_cat' in request.form:
             categories_col.delete_one({"_id": ObjectId(request.form.get('cat_id'))})
         elif 'update_ads' in request.form:
             ads = {k: request.form.get(k) for k in conf['ads'].keys()}
-            settings_col.update_one({"type": "config"}, {"$set": {"ads": ads}})
+            settings_col.update_one({"type": "config"}, {"$set": {"ads": ads}}, upsert=True)
             
         flash("System Configuration Updated!")
         return redirect('/admin/settings')
