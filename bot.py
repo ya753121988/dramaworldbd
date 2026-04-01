@@ -3,11 +3,12 @@ import base64
 from flask import Flask, render_template_string, request, redirect, url_for, session, flash, jsonify, Response
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson.objectid import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- Flask Project Handler ---
 app = Flask(__name__)
 app.secret_key = "dramaworld_ultra_premium_ultimate_v15"
+app.permanent_session_lifetime = timedelta(days=7) # সেশন স্থায়ী করার জন্য
 
 # --- MongoDB Connection ---
 MONGO_URI = "mongodb+srv://akash:arafat@cluster0.dpg7qid.mongodb.net/?appName=Cluster0"
@@ -220,7 +221,7 @@ def get_navbar(conf):
     return f'''
     <nav class="glass sticky top-0 z-50 px-4 md:px-10 py-4 flex justify-between items-center border-b border-white/5">
         <a href="/" onclick="showGlobalLoader()" class="flex items-center gap-2 text-decoration-none">
-            <img src="{conf['logo_url']}" class="h-8 md:h-11" loading="lazy">
+            <img src="{conf['logo_url']}" class="h-8 md:h-11">
             <span class="text-xl md:text-2xl font-black text-blue-500 uppercase italic tracking-tighter">{conf['site_name']}</span>
         </a>
         <div class="flex items-center gap-6">
@@ -350,7 +351,7 @@ def index():
             <form action="/" method="GET" class="relative group" onsubmit="showGlobalLoader()">
                 <input type="text" name="search" placeholder="Search Your Favorite Drama..." 
                        class="w-full bg-slate-900/50 border-2 border-slate-800 py-4 px-6 rounded-2xl text-white focus:border-blue-600 transition-all duration-300 shadow-2xl"
-                       value="{{{{ request.args.get('search', '') }}}}">
+                       value="{{{{ request.args.get('search', '') }}}}" required>
                 <button type="submit" class="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 p-2.5 rounded-xl transition-colors shadow-lg">
                     <i class="fa fa-search text-white"></i>
                 </button>
@@ -368,7 +369,7 @@ def index():
         {{% if slider_movies %}}
         <div class="slider-box mb-12 shadow-2xl">
             {{% for sm in slider_movies %}}
-            <a href="/movie/{{{{ sm._id }}}}" onclick="showGlobalLoader()">
+            <a href="/movie/{{{{ sm._id|string }}}}" onclick="showGlobalLoader()">
                 <img src="{{{{ sm.thumbnail if sm.thumbnail else sm.poster }}}}" class="slide-img" loading="lazy">
             </a>
             {{% endfor %}}
@@ -383,7 +384,7 @@ def index():
                 <h2 class="text-xl font-bold mb-6 flex items-center gap-3"><span class="w-2 h-8 bg-blue-600 rounded-full shadow-[0_0_15px_#3b82f6]"></span> {{{{ cat_name }}}}</h2>
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
                     {{% for m in ms %}}
-                    <div class="movie-card" onclick="showGlobalLoader(); location.href='/movie/{{{{ m._id }}}}'">
+                    <div class="movie-card" onclick="showGlobalLoader(); location.href='/movie/{{{{ m._id|string }}}}'">
                         <img src="{{{{ m.poster }}}}" class="card-thumb" style="height: {{{{ conf.home_poster_height }}}}" loading="lazy">
                         <div class="absolute top-3 left-3 bg-blue-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase border border-white/20">{{{{ m.badge }}}}</div>
                         <div class="p-4 bg-slate-900/90 backdrop-blur-md"><h3 class="font-bold text-sm truncate uppercase italic tracking-tighter">{{{{ m.name }}}}</h3></div>
@@ -417,7 +418,10 @@ def index():
 @app.route('/movie/<id>')
 def movie_details(id):
     conf = get_config()
-    movie = movies_col.find_one({"_id": ObjectId(id)})
+    try:
+        movie = movies_col.find_one({"_id": ObjectId(id)})
+    except:
+        return redirect('/')
     if not movie: return redirect('/')
     
     html = f"""
@@ -439,7 +443,7 @@ def movie_details(id):
                     </h3>
                     
                     <!-- Vertical TikTok Player Button -->
-                    <a href="/play-vertical/{{{{ movie._id }}}}" class="btn-premium !bg-purple-600 mb-6 block w-full !py-5 shadow-purple-500/20 font-black">
+                    <a href="/play-vertical/{{{{ movie._id|string }}}}" class="btn-premium !bg-purple-600 mb-6 block w-full !py-5 shadow-purple-500/20 font-black">
                          🔥 WATCH IN VERTICAL PLAYER (SWIPE MODE)
                     </a>
 
@@ -464,14 +468,17 @@ def movie_details(id):
 @app.route('/play-vertical/<id>')
 def play_vertical(id):
     conf = get_config()
-    movie = movies_col.find_one({"_id": ObjectId(id)})
+    try:
+        movie = movies_col.find_one({"_id": ObjectId(id)})
+    except:
+        return redirect('/')
     if not movie: return redirect('/')
     
     html = f"""
     <!DOCTYPE html><html><head>{CSS}<title>Swipe Player - {{{{ movie.name }}}}</title></head>
     <body style="background:#000; overflow:hidden;">
     <div class="fixed top-6 left-6 z-50">
-        <a href="/movie/{{{{ movie._id }}}}" class="bg-white/10 p-3 rounded-full text-white backdrop-blur-md border border-white/20 shadow-xl"><i class="fa fa-arrow-left"></i></a>
+        <a href="/movie/{{{{ movie._id|string }}}}" class="bg-white/10 p-3 rounded-full text-white backdrop-blur-md border border-white/20 shadow-xl"><i class="fa fa-arrow-left"></i></a>
     </div>
 
     <div class="ep-menu-btn" onclick="toggleVerticalEpMenu()">
@@ -553,14 +560,12 @@ def help_page():
     """
     return render_template_string(html, conf=conf)
 
-# --- AUTH SYSTEM (FIXED REGISTRATION/LOGIN) ---
+# --- AUTH SYSTEM (FIXED FOR SESSION PERSISTENCE) ---
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        name = request.form.get('name')
-        user = request.form.get('user', '').strip() # Strip used for clean input
-        pw = request.form.get('pass', '').strip()
+        name, user, pw = request.form.get('name'), request.form.get('user', '').strip(), request.form.get('pass', '').strip()
         if users_col.find_one({"user": user}):
             flash("Username already exists! Try another.")
         else:
@@ -592,7 +597,7 @@ def login():
         pw = request.form.get('pass', '').strip()
         u = users_col.find_one({"user": user, "pass": pw})
         if u:
-            session.clear()
+            session.permanent = True # সেশন স্থায়ী করার জন্য
             session['user_id'] = str(u['_id'])
             session['user_name'] = u['name']
             return redirect('/')
@@ -629,7 +634,7 @@ def admin_login():
             flash("Admin Credentials Set Successfully! Now Login.")
             return redirect('/admin/wp')
         if user == conf['admin_user'] and pw == conf['admin_pass']:
-            session.clear()
+            session.permanent = True
             session['admin'] = True
             return redirect('/admin')
         flash("Incorrect Admin Credentials!")
@@ -809,8 +814,8 @@ def admin_dash():
                             <td class="p-6 text-xs text-blue-400 font-bold uppercase tracking-widest">{{{{ m.category }}}}</td>
                             <td class="p-6">
                                 <div class="flex justify-center gap-4">
-                                    <a href="/admin/edit/{{{{ m._id }}}}" class="p-3 bg-blue-500/10 text-blue-500 rounded-xl hover:bg-blue-500 hover:text-white transition shadow-md"><i class="fa fa-edit"></i></a>
-                                    <a href="/admin/delete/{{{{ m._id }}}}" class="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition shadow-md" onclick="return confirm('Delete this movie from library?')"><i class="fa fa-trash"></i></a>
+                                    <a href="/admin/edit/{{{{ m._id|string }}}}" class="p-3 bg-blue-500/10 text-blue-500 rounded-xl hover:bg-blue-500 hover:text-white transition shadow-md"><i class="fa fa-edit"></i></a>
+                                    <a href="/admin/delete/{{{{ m._id|string }}}}" class="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition shadow-md" onclick="return confirm('Delete this movie from library?')"><i class="fa fa-trash"></i></a>
                                 </div>
                             </td>
                         </tr>
@@ -1129,7 +1134,6 @@ def add_movie():
     """
     return render_template_string(html, cats=cats)
 
-# --- FIXED SETTINGS (BRANDING & LOGO FIX) ---
 @app.route('/admin/settings', methods=['GET', 'POST'])
 def admin_settings():
     if not session.get('admin'): return redirect('/admin/wp')
@@ -1138,7 +1142,6 @@ def admin_settings():
     
     if request.method == 'POST':
         if 'update_branding' in request.form:
-            # upsert=True makes sure it updates the existing or creates if missing
             settings_col.update_one({"type": "config"}, {"$set": {
                 "site_name": request.form.get('site_name'),
                 "logo_url": request.form.get('logo_url'),
