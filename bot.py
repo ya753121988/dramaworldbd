@@ -12,7 +12,7 @@ app.secret_key = "dramaworld_ultra_premium_ultimate_v15"
 # --- MongoDB Connection ---
 MONGO_URI = "mongodb+srv://akash:arafat@cluster0.dpg7qid.mongodb.net/?appName=Cluster0"
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-db = client['dramaworld_db']
+db = client['dramaworld_dbh']
 
 # Collections
 movies_col = db['movies']
