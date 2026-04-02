@@ -10,7 +10,7 @@ app = Flask(__name__)
 app.secret_key = "dramaworld_ultra_premium_ultimate_v15"
 
 # --- MongoDB Connection ---
-MONGO_URI = "mongodb+srv://ksnsjdjdnkdnd:mxmdmdkdndk@cluster0.gtlvrlq.mongodb.net/?appName=Cluster0"
+MONGO_URI = "mongodb+srv://akash:arafat@cluster0.dpg7qid.mongodb.net/?appName=Cluster0"
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client['dramaworld_db']
 
